@@ -141,6 +141,48 @@ Typical course board: **B-L475E-IOT01A** (or **B-U585I-IOT02A**).
 
 ---
 
+## Two-week feasibility assessment
+
+**Team assumption:** 2 students working part-time for fewer than 2 weeks.
+
+### Honest verdict
+
+The **entire #1–#7 scope is not realistically achievable and demo-stable** in that time. The basic firmware plus **#1–#4** is realistic. One advanced feature may be attempted only after the core demo is stable.
+
+- **High feasibility:** basic state machine and sensors; matrix HUD; IR trigger; buzzer effects; LAST_OF_2028 sequence; UART telemetry.
+- **Medium feasibility:** Wi‑Fi **or** BLE telemetry, provided the board support package and examples work quickly.
+- **Low feasibility:** mmWave tracking plus calibrated 2‑DOF auto-aim. The radar driver, target coordinates, servo mapping, mechanics and power supply create several integration risks.
+- **Very low feasibility:** a safe, reliable flying UAV integration. Flight-controller communication, mounting, weight, power, testing and safety can consume the whole project window.
+
+### Recommended delivery scope
+
+1. **Commit to:** basics + enhancements **#1–#4**.
+2. **Choose one stretch:** preferably **#6 Wi‑Fi/BLE telemetry**.
+3. **Prototype only if ahead:** #5 mmWave detection first; add servo aiming only after detection is reliable.
+4. **Future-work/demo prop:** #7 UAV. Do not make project success depend on flight.
+
+### 14-day timeline
+
+- **Days 1–3 — Student A:** state machine, PB timing, UART and sensor reads.
+- **Days 1–3 — Student B:** verify matrix, IR and buzzer separately with minimal test programs.
+- **Days 4–6 — Both:** integrate matrix HUD, charge/fire effects and IR threat trigger.
+- **Days 7–8 — Both:** implement and test LAST_OF_2028 rescue/timeout/explode behavior.
+- **Days 9–10 — Student A:** telemetry and Command Center output.
+- **Days 9–10 — Student B:** wiring cleanup, non-blocking timing and hardware reliability tests.
+- **Days 11–12 — Both:** end-to-end integration, edge cases and repeatable demo script.
+- **Days 13–14 — Both:** report/video, regression testing and contingency buffer.
+
+If #1–#4 are stable by **Day 9**, use the remaining development time for Wi‑Fi/BLE. Stop adding features after **Day 11** so the final days remain available for debugging and presentation work.
+
+### Scope gates
+
+- **Gate 1 (end Day 3):** all basic sensors, PB and UART work independently.
+- **Gate 2 (end Day 6):** Grove modules work together without blocking the main loop.
+- **Gate 3 (end Day 9):** complete wired demo is repeatable.
+- **Gate 4 (Day 11):** freeze features; unfinished advanced work moves to future work.
+
+---
+
 ## Checklist
 
 - [ ] I2C bus / address for matrix  
