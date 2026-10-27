@@ -18,13 +18,29 @@ High-impact extras for the spaceship drone, biased toward **hardware we already 
 
 ## Recommended enhancements (build these first)
 
-### 1. Matrix HUD + laser charge / fire
+### 1. Matrix overall status display
 | | |
 |--|--|
-| **What** | Mode icon (Standby / Battle / LAST_OF_2028) + 0–8 column charge bar; fire = blast frame + buzzer |
-| **Why** | Demo works without a PC; uses owned matrix + buzzer |
-| **Hooks** | Redraw on mode / `laser_charge` change; fire path in `Handle_Battle_Mode()` |
-| **Effort** | Medium (HT16K33 I2C + a few bitmaps) |
+| **What** | One 8×8 display presents every main feature: charge state, armed state, radar azimuth, mode changes and self-destruct countdown |
+| **Charging** | Fill a 0–8 column progress bar. Once fully charged / armed, flash the full matrix until fired |
+| **Radar** | Draw a moving vertical line whose horizontal position represents target azimuth from left to right |
+| **Mode text** | Scroll `BATTLE MODE` once when Battle begins. Scroll `LAST OF 2028` repeatedly for the whole LAST_OF_2028 mode |
+| **Countdown** | During the final 10 seconds, show `9` through `0` (or a shrinking bar). At `0`, display an explosion frame and then blank the matrix |
+| **Hooks** | A single non-blocking display controller selects the highest-priority screen and redraws from `HAL_GetTick()` |
+| **Effort** | Medium (HT16K33 I2C, scrolling text/font, bitmaps and display arbitration) |
+
+#### Display priority
+
+Only one image fits on an 8×8 matrix, so use this priority:
+
+1. Explosion frame / shutdown
+2. LAST_OF_2028 countdown and repeating text
+3. One-time `BATTLE MODE` transition text
+4. Armed flashing
+5. Charging progress
+6. Radar azimuth line
+
+Mode text temporarily interrupts the normal screen. Radar tracking resumes after `BATTLE MODE` finishes scrolling. In LAST_OF_2028, the repeating warning and countdown override radar and charging.
 
 ### 2. IR threat / “zombie” detect
 | | |
@@ -37,10 +53,13 @@ High-impact extras for the spaceship drone, biased toward **hardware we already 
 ### 3. Richer LAST_OF_2028 / capacitor explode
 | | |
 |--|--|
-| **What** | No rescue in 10 s → matrix strobe → blank, rising buzzer, sacrifice + `Cheerio!`, cut telemetry |
-| **Why** | Memorable ending; almost no new hardware |
-| **Hooks** | Timing inside `Handle_Last_Of_2028_Mode()` |
+| **What** | Start a 10-second countdown on entry. Scroll `LAST OF 2028` repeatedly, accelerate the buzzer beeps as `0` approaches, then show the explosion at `0` |
+| **At zero** | Set `CAP_EXPLODE_Pin` **HIGH** to activate a relay-controlled safe effect; send sacrifice + `Cheerio!`, show the explosion frame, sound the final buzzer burst, blank the matrix and stop normal telemetry |
+| **Rescue** | A valid double-press before `0` cancels the countdown, keeps `CAP_EXPLODE_Pin` LOW and returns to Battle Mode |
+| **Hooks** | Non-blocking countdown and beep interval inside `Handle_Last_Of_2028_Mode()` using `HAL_GetTick()`; GPIO defaults LOW and changes HIGH only at `0` |
 | **Effort** | Low–medium |
+
+The GPIO drives the relay module's control input, not a relay coil directly. The relay must switch only a safe, instructor-approved low-voltage simulation load. Do not rupture, short or overcharge a physical capacitor.
 
 ### 4. Simple Command Center (UART)
 | | |
@@ -60,7 +79,7 @@ High-impact extras for the spaceship drone, biased toward **hardware we already 
 | **What** | mmWave module detects incoming / nearby “projectiles” or targets; two servos pan (**yaw / lateral**) and tilt (**pitch / elevation**) to aim a laser pointer (or LED “laser”) at the track |
 | **Why** | Strong wow feature; real sensing + actuation beyond IR |
 | **Hardware** | mmWave module (UART/GPIO, e.g. RD-03 / similar), **2× hobby servos** on a pan-tilt bracket, laser diode / bright LED, TIM PWM for both servos |
-| **Hooks** | Threat flag → Battle; aim loop updates servo angles from radar (or coarse sector); fire when aligned + `laser_charge` ready |
+| **Hooks** | Threat flag → Battle; aim loop updates servo angles from radar; map target azimuth to both pan servo angle and the matrix's eight horizontal positions; fire when aligned + `laser_charge` ready |
 | **Effort** | High (driver + coordinate mapping + mechanical mount) |
 | **Safety** | Low-power laser / LED only; lab eye-safety rules; no high-energy beam |
 
@@ -110,15 +129,17 @@ High-impact extras for the spaceship drone, biased toward **hardware we already 
 **Core (#1–#4):**  
 1. Standby — matrix idle; UART heartbeat  
 2. IR wave → threat + chirp → Battle  
-3. PB charge → matrix bar → fire (buzzer + flash)  
-4. Flip → LAST_OF_2028; rescue or explode  
+3. Matrix scrolls `BATTLE MODE` once, then returns to the active status screen
+4. PB charge → bar fills → armed matrix flashes → fire
+5. Flip → matrix repeatedly scrolls `LAST OF 2028`; 10-second countdown begins
+6. Rescue before `0`, or hear accelerating beeps → explosion frame at `0` → silence
 
 **Advanced (#5–#6):**  
-5. mmWave tracks target → 2‑DOF servos aim laser → auto/assisted fire  
-6. Phone/laptop gets live Wi‑Fi or BLE telemetry  
+7. mmWave target moves → matrix azimuth line follows → 2‑DOF servos aim laser
+8. Phone/laptop gets live Wi‑Fi or BLE telemetry
 
 **Final (#7):**  
-7. UAV armed in Battle; modes drive companion behaviour; safe land / cut on LAST_OF_2028 or explode  
+9. UAV armed in Battle; modes drive companion behaviour; safe land / cut on LAST_OF_2028 or explode
 
 ---
 
