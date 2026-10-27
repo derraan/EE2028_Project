@@ -1,0 +1,30 @@
+---
+description: Correct drone mode enum naming — LAST_OF_2028, never TEST_OF_*
+alwaysApply: true
+---
+
+# Drone mode naming
+
+The third drone state is **`LAST_OF_2028`**, not any `TEST_OF_*` variant.
+
+## Required names
+
+| Kind | Correct | Forbidden |
+|------|---------|-----------|
+| Enum / state | `LAST_OF_2028` | `TEST_OF_2028`, `TEST_OF_EE2028`, `TEST_OF_EE_2028` |
+| Handler | `Handle_Last_Of_2028_Mode` | `Handle_EE2028_Mode`, `Handle_Test_Of_*` |
+| Prose / docs | "Last of 2028" | "Test of EE2028", "Test of 2028" |
+
+## Examples
+
+```c
+// ❌ BAD
+case TEST_OF_EE2028:
+    Handle_EE2028_Mode();
+
+// ✅ GOOD
+case LAST_OF_2028:
+    Handle_Last_Of_2028_Mode();
+```
+
+If you see a forbidden name in a diff or existing file, rename it to the correct form before finishing the task.

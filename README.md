@@ -7,8 +7,8 @@ STM32L4 skeleton for the EE2028 spaceship drone state machine.
 | State | Description |
 |-------|-------------|
 | `STANDBY_MODE` | LED on; telemetry; double-press or T/A/G thresholds → Battle |
-| `BATTLE_MODE` | LED 1 Hz; laser charge/fire; upside-down → Test of EE2028 |
-| `TEST_OF_EE2028` | LED 2 Hz; attack alerts; double-press rescue or self-destruct |
+| `BATTLE_MODE` | LED 1 Hz; laser charge/fire; upside-down → Last of 2028 |
+| `LAST_OF_2028` | LED 2 Hz; attack alerts; double-press rescue or self-destruct |
 
 ## Layout
 

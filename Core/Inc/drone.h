@@ -21,7 +21,7 @@
 typedef enum {
     STANDBY_MODE,
     BATTLE_MODE,
-    TEST_OF_EE2028
+    LAST_OF_2028
 } DroneState_t;
 
 void SystemClock_Config(void);
@@ -32,7 +32,7 @@ void Send_Telemetry(void);
 void Send_Threshold_Warnings(void);
 void Handle_Standby_Mode(void);
 void Handle_Battle_Mode(void);
-void Handle_EE2028_Mode(void);
+void Handle_Last_Of_2028_Mode(void);
 uint8_t G_is_upside_down(void);
 
 #endif /* DRONE_H */

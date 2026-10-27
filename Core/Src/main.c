@@ -30,8 +30,8 @@ int main(void) {
                 Handle_Battle_Mode();
                 break;
 
-            case TEST_OF_EE2028:
-                Handle_EE2028_Mode();
+            case LAST_OF_2028:
+                Handle_Last_Of_2028_Mode();
                 break;
         }
 
@@ -59,9 +59,9 @@ void Handle_Standby_Mode(void) {
 void Handle_Battle_Mode(void) {
     /* LED blinking at 1 Hz */
 
-    /* Gyroscope upside-down -> TEST_OF_EE2028 */
+    /* Gyroscope upside-down -> LAST_OF_2028 */
     if (G_is_upside_down()) {
-        current_state = TEST_OF_EE2028;
+        current_state = LAST_OF_2028;
         return;
     }
 
@@ -75,8 +75,8 @@ void Handle_Battle_Mode(void) {
     }
 }
 
-/* --- LAST OF EE2028 & SELF-DESTRUCT LOGIC --- */
-void Handle_EE2028_Mode(void) {
+/* --- LAST OF 2028 & SELF-DESTRUCT LOGIC --- */
+void Handle_Last_Of_2028_Mode(void) {
     /* LED blinking at 2 Hz */
 
     /* Send "Drone was attacked" message every 1s */
@@ -106,7 +106,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
         if (pb_press_count == 2) {
             if (current_state == STANDBY_MODE) {
                 current_state = BATTLE_MODE; /* Double press enters Battle Mode */
-            } else if (current_state == TEST_OF_EE2028) {
+            } else if (current_state == LAST_OF_2028) {
                 current_state = BATTLE_MODE; /* Rescue action */
             }
             pb_press_count = 0;
