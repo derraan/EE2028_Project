@@ -1,5 +1,6 @@
 #include "status_display.h"
 #include "buzzer_test.h"
+#include "ir_threat_test.h"
 #include <string.h>
 
 typedef enum {
@@ -45,6 +46,7 @@ static void PrintMenu(void)
     UartPrint("s : run full auto sequence\r\n");
     UartPrint("--- Buzzer ---\r\n");
     Buzzer_Test_PrintMenu();
+    IR_Test_PrintMenu();
     UartPrint("note: buzzer uses uppercase F/X/Z to avoid key clash\r\n");
     UartPrint("h : show this menu\r\n");
 }
@@ -151,6 +153,7 @@ void StatusDisplay_Test_Init(StatusDisplay_HandleTypeDef *h,
     s_auto_state = AUTO_IDLE;
     StatusDisplay_Init(s_status, dev);
     Buzzer_Test_Init(huart);
+    IR_Test_Init(huart);
     PrintMenu();
 }
 
@@ -227,12 +230,15 @@ void StatusDisplay_Test_Update(uint32_t now_ms)
                 PrintMenu();
                 break;
             default:
-                (void)Buzzer_Test_HandleKey(ch, now_ms);
+                if (IR_Test_HandleKey(ch, now_ms) == 0U) {
+                    (void)Buzzer_Test_HandleKey(ch, now_ms);
+                }
                 break;
         }
     }
 
     AutoSequence_Update(now_ms);
+    IR_Test_Update(now_ms);
     Buzzer_Test_Update(now_ms);
     (void)StatusDisplay_Update(s_status, now_ms);
 }
