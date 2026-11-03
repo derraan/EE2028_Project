@@ -188,23 +188,32 @@ Hardware notes:
 
 Deliverable: hand/card approach creates one clean threat event. **Done** (bench-verified on D3; `EVT IR=1` / threat chirp confirmed). See `docs/IR_Design.md`.
 
-## Task 5 — Safe relay simulation adapter
+## Task 5 — Safe relay simulation adapter ✅ implemented (bench with LED/relay next)
 
 Create:
 
 - `App/Inc/relay_effect.h`
 - `App/Src/relay_effect.c`
+- `App/Inc/relay_effect_test.h`
+- `App/Test/relay_effect_test.c`
 
 Tasks:
 
-- [ ] Keep the output LOW during initialization and normal operation.
-- [ ] Provide explicit `RelayEffect_Trigger()` and `RelayEffect_Reset()` APIs.
-- [ ] Decide with the team whether HIGH is latched or timed.
-- [ ] Use the relay module control input only, not a bare relay coil.
+- [x] Keep the output LOW during initialization and normal operation.
+- [x] Provide explicit `RelayEffect_Trigger()` and `RelayEffect_Reset()` APIs.
+- [x] Decide with the team whether HIGH is latched or timed. → **latched HIGH** until Reset (`pulse_ms=0`); optional timed pulse supported.
+- [x] Use the relay module control input only, not a bare relay coil.
 - [ ] Test first with an LED or other safe low-voltage load.
 - [ ] Do not integrate until mandatory termination behavior works.
 
-Deliverable: countdown-zero event produces one controlled GPIO action with no startup glitch.
+Hardware notes:
+
+- `CAP_EXPLODE` on **D4** (`ARD_D4_Pin` / `ARD_D4_GPIO_Port`, **PA3** on B-L475E-IOT01A).
+- D2 = buzzer, D3 = IR; D4 is the next free Arduino digital.
+- Push-pull output, written LOW before `HAL_GPIO_Init` to avoid a HIGH glitch.
+- Status display rising edge of `explosion_active` → `Relay_Test_OnExplosion()`; rescue/`0` → LOW.
+
+Deliverable: countdown-zero / `x` produces one controlled GPIO HIGH with no startup glitch. See `docs/Relay_Design.md`.
 
 ## Task 6 — Radar/servo flow without radar hardware
 
@@ -531,13 +540,14 @@ After each step, rerun the entire mandatory acceptance checklist. Revert or disa
 3. ~~Implement pure bitmap/font/status-display logic (Task 2).~~ ✅
 4. ~~Implement non-blocking buzzer patterns (Task 3).~~ ✅
 5. ~~Implement IR hardware smoke tests in isolated test code (Task 4).~~ ✅
-6. RD-03E ranging parser + single-person registration prototype (**Task 6a — next**).
-7. Keep Task 6 azimuth/servo simulation as stretch (do not assume RD-03E XY).
-8. ~~Import Command Center HTML mockup.~~ ✅ (`Command/index.html`)
-9. Annotate `data-cc-*` hooks and draft UART/`EVT` tags with friend (**Task 8**).
-10. Wait for the mandatory baseline integration checkpoint.
-11. Merge and bind matrix first; add other enhancements one by one.
-12. Wire the `Command/` web bridge last (needs stable UART lines; mock/fixture mode can proceed earlier).
+6. ~~Implement relay / CAP_EXPLODE adapter on D4 (Task 5).~~ ✅
+7. RD-03E ranging parser + single-person registration prototype (**Task 6a — next**).
+8. Keep Task 6 azimuth/servo simulation as stretch (do not assume RD-03E XY).
+9. ~~Import Command Center HTML mockup.~~ ✅ (`Command/index.html`)
+10. Annotate `data-cc-*` hooks and draft UART/`EVT` tags with friend (**Task 8**).
+11. Wait for the mandatory baseline integration checkpoint.
+12. Merge and bind matrix first; add other enhancements one by one.
+13. Wire the `Command/` web bridge last (needs stable UART lines; mock/fixture mode can proceed earlier).
 
 ## Definition of done
 
