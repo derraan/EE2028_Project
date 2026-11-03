@@ -1,193 +1,252 @@
-/* Dependency-free perspective renderer. All coordinates use simulated metres. */
+/* Perspective scene and event visualization. Coordinates are fictional scene units. */
 (() => {
   'use strict';
-  const canvas = document.querySelector('#flightCanvas');
-  const context = canvas.getContext('2d');
   const ui = id => document.getElementById(id);
-  const keys = new Set();
-  let state, lastTime = performance.now(), scanUntil = 0, shotUntil = 0;
-  let width = 1, height = 1;
-  const beacon = { x: 0, y: 35, z: 850 };
-
-  function report(message) { ui('flightEvent').textContent = message; }
+  const canvas = ui('world');
+  const context = canvas.getContext('2d');
+  const sensorNames = ['Temperature', 'Pressure', 'Humidity', 'Acceleration', 'Angular rate', 'Magnetic field'];
+  let state, source = 'simulation', orbit = 0.6, forward = false, drag = null;
+  let previous = performance.now(), clock = 0, width = 1, height = 1;
+  let eventCount = 0, lastSample = 0;
+  const samples = new Map();
+  const faces = [];
+  function log(message) {
+    const item = document.createElement('li');
+    const time = document.createElement('time');
+    time.textContent = new Date().toLocaleTimeString();
+    item.append(time, document.createTextNode(message));
+    ui('log').prepend(item);
+    while (ui('log').children.length > 80) ui('log').lastChild.remove();
+    ui('eventCount').textContent = ++eventCount + ' EVENTS';
+  }
+  function mode(value) {
+    state.mode = value;
+    if (value !== 'THE_LAST_OF_EE2028') state.remaining = null;
+  }
   function reset() {
-    state = { x: 0, y: 42, z: 0, yaw: 0, speed: 0, charge: 5,
-      mode: 'STANDBY', rescue: 0, scanned: false, complete: false };
-    scanUntil = shotUntil = 0;
-    keys.clear();
-    ui('objective').textContent = 'Find the Nacre beacon';
-    ui('flightHint').textContent = 'Launch, approach the beacon, then scan within 180 m.';
-    report('Ready on the landing pad. Flight and sensor values in this view are simulated.');
+    state = { mode: source === 'simulation' ? 'STANDBY' : 'UNKNOWN', charge: source === 'simulation' ? 5 : null,
+      surveying: false, contact: false, shot: 0, scan: 0, remaining: null, recovered: false, ended: false };
+    lastSample = 0; samples.clear(); eventCount = 0; ui('log').replaceChildren();
+    ui('ending').hidden = true; ui('warning').textContent = 'No active warning reported.';
+    ui('objective').textContent = source === 'simulation' ? 'Recover the last transmission' : 'Awaiting firmware output';
+    ui('hint').textContent = source === 'simulation' ? 'Begin the survey to wake the relay.' : 'Paste UART messages below to replay the encounter.';
+    ui('connection').textContent = source === 'simulation' ? 'SIMULATION' : 'AWAITING SIGNAL';
+    log(source === 'simulation' ? 'Simulation ready. Relay outpost silent.' : 'Replay ready. No live device connection.');
+    renderSensors(); updateUI();
   }
-  function distance() {
-    return Math.hypot(state.x - beacon.x, state.y - beacon.y, state.z - beacon.z);
+  function finish(success) {
+    state.ended = true;
+    ui('ending').hidden = false;
+    ui('endingLabel').textContent = success ? 'TRANSMISSION FRAGMENT 01' : 'MISSION RECORD CLOSED';
+    ui('endingTitle').textContent = success ? 'We left the light on.' : 'The last signal.';
+    ui('endingText').textContent = success
+      ? '“If anyone receives this, the relay still works. Follow the lights beyond the basin. We are waiting.”'
+      : 'The drone’s final transmission has been recorded. The outpost falls silent.';
+    log(success ? 'Mission complete. Transmission fragment recovered.' : 'Terminal transmission recorded. Cheerio!');
   }
-  function action(name) {
-    if (name === 'reset') { reset(); return; }
-    if (state.mode === 'TERMINATED') return;
-    if (name === 'rescue' && state.mode === 'THE_LAST_OF_EE2028') {
-      state.mode = 'BATTLE'; state.rescue = 0;
-      report('Rescue confirmed. Battle mode restored.'); return;
-    }
-    if (state.mode === 'THE_LAST_OF_EE2028') return;
-    if (name === 'launch') {
-      state.speed = state.speed ? 0 : 55;
-      report(state.speed ? 'Flight engaged. Follow the green beacon.' : 'Position hold engaged.');
-    }
-    if (name === 'scan') {
-      scanUntil = performance.now() + 1600;
-      if (distance() < 180) {
-        state.scanned = true; state.mode = 'BATTLE';
-        ui('objective').textContent = 'Beacon acquired. Test the laser';
-        ui('flightHint').textContent = 'Fire with at least 5/10 charge to complete the encounter.';
-        report('Scan confirmed. Nacre beacon acquired. Battle mode active.');
-      } else report('Scan complete. Beacon beyond 180 m acquisition range.');
-    }
-    if (name === 'charge') {
-      state.charge = Math.min(10, state.charge + 3);
-      report('Laser recharged to ' + state.charge + '/10.');
-    }
-    if (name === 'fire') {
-      if (state.mode !== 'BATTLE') { report('Enter Battle mode by scanning the beacon.'); return; }
-      if (state.charge < 5) { report('Insufficient charge. Press C to recharge.'); return; }
-      state.charge -= 5; shotUntil = performance.now() + 180;
-      if (state.scanned && distance() < 180) {
-        state.complete = true; state.speed = 0;
-        ui('objective').textContent = 'Nacre contact established';
-        ui('flightHint').textContent = 'Mission complete. Explore, test distress, or restart.';
+  function distress() {
+    mode('THE_LAST_OF_EE2028');
+    state.remaining = source === 'simulation' ? 10 : null;
+    log('Drone overturned. Rescue window active.');
+  }
+  function simulate(action) {
+    if (source !== 'simulation' || state.ended) return;
+    if (state.mode === 'THE_LAST_OF_EE2028') {
+      if (action === 'rescue') {
+        mode('BATTLE'); log('Rescue confirmed. Drone upright.');
+        if (state.recovered) finish(true);
+        updateUI();
       }
-      report('Laser fired. Remaining charge ' + state.charge + '/10.');
+      return;
     }
-    if (name === 'distress') {
-      state.mode = 'THE_LAST_OF_EE2028'; state.rescue = 10; state.speed = 0;
-      report('Drone attacked. Press R or Rescue within 10 seconds.');
+    if (action === 'survey') {
+      state.surveying = true; state.scan = 2;
+      ['24.8 °C','1008.6 hPa','52.0 %','[0.0, 0.0, 9.8] m/s²','[0.0, 0.0, 0.0] °/s','[210, 12, -45] mG'].forEach((value,index) => samples.set(sensorNames[index],value));
+      lastSample = performance.now();
+      ui('objective').textContent = 'Investigate the approaching contact';
+      ui('hint').textContent = 'Introduce a contact to enter Battle mode.';
+      log('Simulated survey sample received. Relay located.'); renderSensors();
+    }
+    if (action === 'threat' && state.surveying) {
+      state.contact = true; mode('BATTLE');
+      ui('hint').textContent = 'Fire with at least 5/10 charge to secure the relay.';
+      log('Simulated proximity contact. Entering Battle mode.');
+    }
+    if (action === 'recharge' && state.mode === 'BATTLE') {
+      state.charge = Math.min(10,state.charge + 3); log('Charge updated to ' + state.charge + '/10.');
+    }
+    if (action === 'fire' && state.mode === 'BATTLE') {
+      if (state.charge < 5) { log('Fire rejected. Insufficient charge.'); return; }
+      state.charge -= 5; state.shot = 0.3; log('Laser fired. Remaining charge ' + state.charge + '/10.');
+      if (state.contact) {
+        state.contact = false; state.recovered = true;
+        ui('objective').textContent = 'Relay secured. Restore the drone';
+        ui('hint').textContent = 'Recover from the emergency to receive the transmission.';
+        distress();
+      }
+    }
+    if (action === 'overturn') distress();
+    updateUI();
+  }
+  function ingest(line) {
+    let recognized = false;
+    const charge = line.match(/(?:charge|Remaining charge):?\s*(\d+)\/10/i);
+    if (charge && Number(charge[1]) <= 10) { state.charge = Number(charge[1]); recognized = true; }
+    if (/Entering STANDBY|Returning to STANDBY/i.test(line)) { mode('STANDBY'); recognized = true; }
+    if (/Entering BATTLE|reverted to Battle/i.test(line)) { mode('BATTLE'); recognized = true; }
+    if (/Entering THE LAST|Entering THE_LAST/i.test(line)) { distress(); recognized = true; }
+    if (/Drone was attacked/i.test(line)) { mode('THE_LAST_OF_EE2028'); recognized = true; }
+    if (/Laser gun fired/i.test(line)) { state.shot = 0.3; recognized = true; }
+    if (/Cheerio!/.test(line)) { mode('TERMINATED'); finish(false); recognized = true; }
+    if (/exceeds threshold|drops below threshold/i.test(line)) {
+      ui('warning').textContent = line; recognized = true;
+    }
+    const telemetry = line.match(/Telemetry\s*->\s*T:([\d.+-]+)\s*°?C,\s*P:([\d.+-]+)\s*hPa,\s*H:([\d.+-]+)\s*%\s*\|\s*Accel:\[([^\]]+)\]\s*m\/s\^2\s*\|\s*Gyro:\[([^\]]+)\]\s*dps\s*\|\s*Magneto:\[([^\]]+)\]\s*mgauss/);
+    if (telemetry) {
+      const values = telemetry.slice(1);
+      const numbers = values.flatMap(value => value.split(',').map(Number));
+      if (numbers.length === 12 && numbers.every(Number.isFinite)) {
+        const formatted = [values[0]+' °C',values[1]+' hPa',values[2]+' %','['+values[3]+'] m/s²','['+values[4]+'] °/s','['+values[5]+'] mG'];
+        formatted.forEach((value,index) => samples.set(sensorNames[index],value));
+        lastSample = performance.now(); ui('warning').textContent = 'Normal telemetry resumed.'; renderSensors(); recognized = true;
+      }
+    }
+    if (/Rescue attempt|still upside down|charge too low|recharging|charge is already|noble sacrifice|self-destructing/i.test(line)) recognized = true;
+    if (recognized) log(line);
+    return recognized;
+  }
+  function renderSensors() {
+    ui('sensors').replaceChildren();
+    for (const name of sensorNames) {
+      const card = document.createElement('div'), label = document.createElement('span'), value = document.createElement('strong');
+      label.textContent = name; value.textContent = samples.get(name) || '—';
+      card.append(label,value); ui('sensors').append(card);
     }
   }
-  for (const name of ['launch', 'scan', 'charge', 'fire', 'distress', 'rescue', 'reset']) {
-    ui(name + 'Flight').onclick = () => action(name);
-  }
-  function active() { return ui('flight').classList.contains('active'); }
-  document.addEventListener('keydown', event => {
-    if (!active() || /INPUT|TEXTAREA|BUTTON/.test(event.target.tagName)) return;
-    const key = event.key.toLowerCase();
-    if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(key)) event.preventDefault();
-    keys.add(key);
-    if (!event.repeat) {
-      const actions = { ' ': 'scan', f: 'fire', c: 'charge', r: 'rescue' };
-      if (actions[key]) action(actions[key]);
+  function updateUI() {
+    ui('mode').textContent = state.mode.replaceAll('_',' ');
+    ui('charge').textContent = state.charge === null ? '— / 10' : state.charge + ' / 10';
+    ui('chargeBars').replaceChildren(...Array.from({length:10},(_,index) => {
+      const bar = document.createElement('i'); bar.className = index < state.charge ? 'on' : ''; return bar;
+    }));
+    ui('emergency').hidden = state.mode !== 'THE_LAST_OF_EE2028' || state.ended;
+    ui('countdown').textContent = state.remaining === null ? 'AWAITING EVENT' : state.remaining.toFixed(1);
+    ui('coordinates').textContent = state.contact ? 'CONTACT / SIMULATED' : 'RELAY / ' + (state.recovered ? 'SECURED' : 'SILENT');
+    for (const action of ['survey','threat','recharge','fire','overturn','rescue']) {
+      const rescueMode = state.mode === 'THE_LAST_OF_EE2028';
+      ui(action).disabled = state.ended || (rescueMode ? action !== 'rescue' : action === 'rescue')
+        || (action === 'threat' && !state.surveying)
+        || (['fire','recharge'].includes(action) && state.mode !== 'BATTLE');
     }
-  });
-  document.addEventListener('keyup', event => keys.delete(event.key.toLowerCase()));
-  window.addEventListener('blur', () => keys.clear());
-  let pointer = null;
-  canvas.onpointerdown = event => {
-    canvas.focus(); canvas.setPointerCapture(event.pointerId);
-    pointer = { x: event.clientX, y: event.clientY };
+  }
+  for (const action of ['survey','threat','recharge','fire','overturn','rescue']) ui(action).onclick = () => simulate(action);
+  ui('restart').onclick = reset;
+  ui('source').onchange = event => {
+    source = event.target.value;
+    ui('simulationControls').hidden = source !== 'simulation';
+    ui('replayPanel').hidden = source !== 'replay';
+    ui('freshness').textContent = source === 'simulation' ? 'Browser-generated events' : 'Pasted log · no live connection';
+    reset();
   };
+  ui('ingest').onclick = () => {
+    const lines = ui('uart').value.split(/\r?\n/).filter(line => line.trim());
+    let accepted = 0;
+    for (const line of lines) if (ingest(line)) accepted++;
+    ui('parseStatus').textContent = accepted + ' recognized / ' + lines.length + ' lines. Unrecognized lines were skipped.';
+    if (accepted) ui('connection').textContent = 'UART REPLAY';
+    updateUI();
+  };
+  ui('camera').onclick = () => {
+    forward = !forward; ui('camera').textContent = forward ? 'Orbit camera' : 'Forward camera';
+  };
+  canvas.onpointerdown = event => { drag = event.clientX; canvas.setPointerCapture(event.pointerId); };
   canvas.onpointermove = event => {
-    if (!pointer || state.mode === 'TERMINATED' || state.rescue) return;
-    state.yaw += (event.clientX - pointer.x) * 0.003;
-    state.y = Math.max(12, Math.min(170, state.y - (event.clientY - pointer.y) * 0.2));
-    pointer = { x: event.clientX, y: event.clientY };
+    if (drag === null) return;
+    orbit += (event.clientX-drag)*0.008; drag = event.clientX;
   };
-  canvas.onpointerup = canvas.onpointercancel = () => { pointer = null; };
-  function project(point) {
-    const dx = point.x - state.x, dz = point.z - state.z;
-    const depth = dz * Math.cos(state.yaw) + dx * Math.sin(state.yaw);
-    if (depth < 2) return null;
-    const lateral = dx * Math.cos(state.yaw) - dz * Math.sin(state.yaw);
-    const scale = Math.min(width, height) * 0.95 / depth;
-    return { x: width / 2 + lateral * scale, y: height * 0.48 - (point.y - state.y) * scale, depth };
+  canvas.onpointerup = canvas.onpointercancel = () => { drag = null; };
+  function point(x,y,z) {
+    const camera = forward ? [0,5,3] : [Math.sin(orbit)*27,15,Math.cos(orbit)*27];
+    const target = forward ? [0,5,-20] : [0,3,0];
+    const dz = target[2]-camera[2], dx = target[0]-camera[0];
+    const yaw = Math.atan2(dx,dz), pitch = Math.atan2(target[1]-camera[1],Math.hypot(dx,dz));
+    const rx = x-camera[0], ry = y-camera[1], rz = z-camera[2];
+    const lateral = rx*Math.cos(yaw)-rz*Math.sin(yaw);
+    const depth = rx*Math.sin(yaw)+rz*Math.cos(yaw);
+    const vertical = ry*Math.cos(pitch)-depth*Math.sin(pitch);
+    const distance = ry*Math.sin(pitch)+depth*Math.cos(pitch);
+    if (distance < 0.5) return null;
+    const scale = Math.min(width,height)*1.1/distance;
+    return {x:width/2+lateral*scale,y:height*0.57-vertical*scale,distance};
   }
-  function terrain(x, z) {
-    const corridor = 85 + 18 * Math.sin(z * 0.009);
-    return Math.max(0, Math.abs(x) - corridor) * 0.8
-      + (Math.sin(x * 0.047 + z * 0.025) + Math.cos(z * 0.044)) * Math.min(12, Math.abs(x) / 10);
+  function polygon(vertices,color) {
+    const projected = vertices.map(vertex => point(...vertex));
+    if (projected.some(vertex => !vertex)) return;
+    faces.push({vertices:projected,color,depth:projected.reduce((sum,vertex)=>sum+vertex.distance,0)/projected.length});
   }
-  function draw(now) {
-    const sky = context.createLinearGradient(0, 0, 0, height);
-    sky.addColorStop(0, '#10222e'); sky.addColorStop(0.55, '#658784'); sky.addColorStop(1, '#132225');
-    context.fillStyle = sky; context.fillRect(0, 0, width, height);
-    context.fillStyle = '#c7d8bb'; context.beginPath();
-    context.arc(width * 0.78, height * 0.23, height * 0.055, 0, Math.PI * 2); context.fill();
-    const faces = [];
-    const base = Math.floor(state.z / 45) * 45;
-    for (let z = base - 180; z < base + 1600; z += 45) {
-      for (let x = -500; x < 500; x += 50) {
-        const points = [[x,z],[x+50,z],[x+50,z+45],[x,z+45]].map(([px,pz]) =>
-          project({x:px,y:terrain(px,pz),z:pz}));
-        if (points.some(point => !point)) continue;
-        faces.push({points, depth:points.reduce((sum,p) => sum+p.depth,0)/4,
-          shade: Math.round(23 + 7 * Math.sin(x * 0.1 + z * 0.03))});
+  function box(x,y,z,w,h,d,color) {
+    const v = [[x-w,y,z-d],[x+w,y,z-d],[x+w,y,z+d],[x-w,y,z+d],
+      [x-w,y+h,z-d],[x+w,y+h,z-d],[x+w,y+h,z+d],[x-w,y+h,z+d]];
+    for (const indices of [[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7],[4,5,6,7]]) polygon(indices.map(index=>v[index]),color);
+  }
+  function draw() {
+    const sky = context.createLinearGradient(0,0,0,height);
+    sky.addColorStop(0,'#0c1a23');sky.addColorStop(1,'#526666');
+    context.fillStyle=sky;context.fillRect(0,0,width,height);
+    context.fillStyle='#d9d2ab';context.beginPath();context.arc(width*.78,height*.2,22,0,Math.PI*2);context.fill();
+    faces.length=0;
+    for(let x=-60;x<60;x+=8) for(let z=-60;z<60;z+=8) {
+      polygon([[x,-1,z],[x+8,-1,z],[x+8,-1,z+8],[x,-1,z+8]],(x+z)%16===0?'#243232':'#293635');
+    }
+    for(let i=0;i<24;i++) {
+      const angle=i*2.4, radius=32+i%5*4, x=Math.sin(angle)*radius,z=Math.cos(angle)*radius;
+      box(x,-1,z,3,4+i%7,3,'#30403f');
+    }
+    box(0,-1,-15,5,1,5,'#475452');
+    box(0,0,-15,1.3,15,1.3,state.recovered?'#a9c79b':'#65706a');
+    box(0,10,-15,5,.7,.6,'#6d7770');
+    box(-7,-1,-19,3,4,3,'#3c4c49');
+    const down=state.mode==='THE_LAST_OF_EE2028'||state.ended&&!state.recovered;
+    const y=down?0:4+Math.sin(clock*2)*.15;
+    if(!forward) {
+      box(0,y,0,1.7,down?2.6:.8,1.2,'#97aaa1');
+      for(const x of [-3,3]) for(const z of [-2,2]) {
+        box(x/2,y+.1,z/2,1.1,.2,.3,'#596e68');
+        box(x,y,z,.8,.25,.8,'#354a47');
+        box(x,y+.28,z,.6,.05,.6,state.ended?'#263332':'#bbeb9d');
       }
+      box(0,y+.15,-1.6,.3,.3,.9,state.mode==='BATTLE'?'#e5c593':'#54675f');
     }
-    faces.sort((a,b) => b.depth-a.depth);
-    for (const face of faces) {
-      context.beginPath();
-      face.points.forEach((point,index) => index ? context.lineTo(point.x,point.y) : context.moveTo(point.x,point.y));
-      context.closePath();
-      context.fillStyle = 'hsl(165 16% ' + face.shade + '%)';
-      context.fill();
-      context.strokeStyle = scanUntil > now ? '#a8e69255' : '#88b8a512';
-      context.stroke();
+    if(state.contact) box(5,3+Math.sin(clock*3),-9,1,1.5,1,'#c39273');
+    faces.sort((a,b)=>b.depth-a.depth);
+    for(const face of faces) {
+      context.beginPath();face.vertices.forEach((vertex,index)=>index?context.lineTo(vertex.x,vertex.y):context.moveTo(vertex.x,vertex.y));
+      context.closePath();context.fillStyle=face.color;context.fill();context.strokeStyle='#91b3a214';context.stroke();
     }
-    const target = project(beacon);
-    if (target) {
-      const radius = Math.max(6, Math.min(90, 1300 / target.depth));
-      context.strokeStyle = '#ccff9e'; context.lineWidth = 2;
-      context.strokeRect(target.x-radius,target.y-radius,radius*2,radius*2);
-      context.fillStyle = '#dcffc7'; context.font = '12px monospace';
-      context.fillText('NACRE / ' + Math.round(distance()) + ' m',target.x+radius+8,target.y);
+    if(state.scan>0) {
+      const p=point(0,0,0);
+      if(p){context.strokeStyle='#c2ec9e88';context.beginPath();context.ellipse(p.x,p.y,(2-state.scan)*180,(2-state.scan)*45,0,0,Math.PI*2);context.stroke();}
     }
-    if (scanUntil > now) {
-      context.strokeStyle = '#c7ff9d88'; context.lineWidth = 2;
-      context.beginPath(); context.arc(width/2,height/2,(1600-scanUntil+now)*width/1800,0,Math.PI*2); context.stroke();
+    if(state.shot>0) {
+      const start=point(0,y,-2),end=point(5,4,-9);
+      if(start&&end){context.strokeStyle='#dcffb7';context.lineWidth=4;context.beginPath();context.moveTo(start.x,start.y);context.lineTo(end.x,end.y);context.stroke();context.lineWidth=1;}
     }
-    if (shotUntil > now) {
-      context.strokeStyle = '#e2ffc3'; context.lineWidth = 4;
-      for (const x of [width*0.18,width*0.82]) {
-        context.beginPath();context.moveTo(x,height);context.lineTo(width/2,height/2);context.stroke();
-      }
-    }
-    context.fillStyle = '#091318';
-    context.beginPath();context.moveTo(0,height);context.lineTo(0,height*0.83);
-    context.lineTo(width*0.23,height*0.94);context.lineTo(width*0.77,height*0.94);
-    context.lineTo(width,height*0.83);context.lineTo(width,height);context.fill();
-    if (state.rescue || state.mode === 'TERMINATED') {
-      context.fillStyle = '#9f241f55';context.fillRect(0,0,width,height);
-      context.fillStyle = '#ffe2ca';context.textAlign = 'center';context.font = 'bold 28px monospace';
-      context.fillText(state.rescue ? 'RESCUE ' + state.rescue.toFixed(1) + 's' : 'SIGNAL TERMINATED',width/2,height*0.65);
-      context.textAlign = 'left';
-    }
+    if(forward){context.strokeStyle='#c2ec9e';context.strokeRect(width/2-12,height/2-12,24,24);}
   }
   function frame(now) {
-    const dt = Math.min((now-lastTime)/1000,0.1); lastTime = now;
-    if (active()) {
-      const rect = canvas.getBoundingClientRect();
-      const ratio = Math.min(devicePixelRatio || 1,2);
-      if (canvas.width !== Math.round(rect.width*ratio) || canvas.height !== Math.round(rect.height*ratio)) {
-        width=rect.width;height=rect.height;canvas.width=Math.round(width*ratio);canvas.height=Math.round(height*ratio);
-        context.setTransform(ratio,0,0,ratio,0,0);
-      }
-      if (state.rescue) {
-        state.rescue = Math.max(0,state.rescue-dt);
-        if (!state.rescue) { state.mode='TERMINATED';report('Rescue window expired. Cheerio! Restart to fly again.'); }
-      } else if (state.mode !== 'TERMINATED') {
-        state.yaw += ((keys.has('arrowright')?1:0)-(keys.has('arrowleft')?1:0))*dt;
-        state.speed = Math.max(0,Math.min(100,state.speed+((keys.has('w')?1:0)-(keys.has('s')?1:0))*dt*30));
-        state.y = Math.max(12,Math.min(170,state.y+((keys.has('arrowup')?1:0)-(keys.has('arrowdown')?1:0))*dt*25));
-        state.x += Math.sin(state.yaw)*state.speed*dt;state.z += Math.cos(state.yaw)*state.speed*dt;
-        if (state.y < terrain(state.x,state.z)+8 || Math.abs(state.x)>450) {
-          state.speed=0;state.x=Math.max(-440,Math.min(440,state.x));
-          state.y=Math.max(state.y,terrain(state.x,state.z)+10);
-          report('Terrain proximity. Position hold engaged; steer toward the canyon.');
-        }
-      }
-      draw(now);
-      ui('flightReadout').textContent = Math.round(state.speed)+' m/s · ALT '+Math.round(state.y)+' m · CHARGE '+state.charge+'/10';
-      ui('missionMode').textContent = state.mode;
-    } else keys.clear();
-    requestAnimationFrame(frame);
+    const dt=Math.min(.1,(now-previous)/1000);previous=now;clock+=dt;
+    const rect=canvas.getBoundingClientRect(),ratio=Math.min(devicePixelRatio||1,2);
+    if(canvas.width!==Math.round(rect.width*ratio)||canvas.height!==Math.round(rect.height*ratio)){
+      width=rect.width;height=rect.height;canvas.width=Math.round(width*ratio);canvas.height=Math.round(height*ratio);context.setTransform(ratio,0,0,ratio,0,0);
+    }
+    state.shot=Math.max(0,state.shot-dt);state.scan=Math.max(0,state.scan-dt);
+    if(state.remaining!==null&&!state.ended){
+      state.remaining=Math.max(0,state.remaining-dt);
+      if(!state.remaining){mode('TERMINATED');finish(false);}
+      updateUI();
+    }
+    ui('sampleAge').textContent=lastSample?'Last sample '+Math.floor((now-lastSample)/1000)+'s ago'+(now-lastSample>3000?' · STALE':''):'No sample';
+    draw();requestAnimationFrame(frame);
   }
-  reset(); requestAnimationFrame(frame);
+  reset();requestAnimationFrame(frame);
 })();
