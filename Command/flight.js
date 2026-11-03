@@ -7,7 +7,7 @@
   const sensorNames = ['Temperature', 'Pressure', 'Humidity', 'Acceleration', 'Angular rate', 'Magnetic field'];
   let state, source = 'simulation', orbit = 0.6, forward = false, drag = null;
   let previous = performance.now(), clock = 0, width = 1, height = 1;
-  let eventCount = 0, lastSample = 0;
+  let eventCount = 0, lastSample = 0, pendingPress = null, pressedAt = 0;
   const samples = new Map();
   const faces = [];
   function log(message) {
@@ -24,68 +24,85 @@
     if (value !== 'THE_LAST_OF_EE2028') state.remaining = null;
   }
   function reset() {
-    state = { mode: source === 'simulation' ? 'STANDBY' : 'UNKNOWN', charge: source === 'simulation' ? 5 : null,
+    clearTimeout(pendingPress); pendingPress = null;
+    state = { mode: source === 'simulation' ? 'STANDBY' : 'UNKNOWN', charge: source === 'simulation' ? 0 : null,
       surveying: false, contact: false, shot: 0, scan: 0, remaining: null, recovered: false, ended: false };
     lastSample = 0; samples.clear(); eventCount = 0; ui('log').replaceChildren();
     ui('ending').hidden = true; ui('warning').textContent = 'No active warning reported.';
-    ui('objective').textContent = source === 'simulation' ? 'Recover the last transmission' : 'Awaiting firmware output';
-    ui('hint').textContent = source === 'simulation' ? 'Begin the survey to wake the relay.' : 'Paste UART messages below to replay the encounter.';
+    ui('objective').textContent = source === 'simulation' ? 'Scout for a human habitat' : 'Awaiting firmware output';
+    ui('hint').textContent = source === 'simulation' ? 'Sample the district in Standby, then defend the lab.' : 'Paste UART messages below to replay the encounter.';
     ui('connection').textContent = source === 'simulation' ? 'SIMULATION' : 'AWAITING SIGNAL';
-    log(source === 'simulation' ? 'Simulation ready. Relay outpost silent.' : 'Replay ready. No live device connection.');
+    log(source === 'simulation' ? 'Simulation ready. Lab perimeter clear.' : 'Replay ready. No live device connection.');
     renderSensors(); updateUI();
   }
   function finish(success) {
     state.ended = true;
     ui('ending').hidden = false;
-    ui('endingLabel').textContent = success ? 'TRANSMISSION FRAGMENT 01' : 'MISSION RECORD CLOSED';
-    ui('endingTitle').textContent = success ? 'We left the light on.' : 'The last signal.';
+    ui('endingLabel').textContent = success ? 'LAB PERIMETER SECURED' : 'MISSION RECORD CLOSED';
+    ui('endingTitle').textContent = success ? 'The lab is still standing.' : 'The last signal.';
     ui('endingText').textContent = success
-      ? '“If anyone receives this, the relay still works. Follow the lights beyond the basin. We are waiting.”'
-      : 'The drone’s final transmission has been recorded. The outpost falls silent.';
-    log(success ? 'Mission complete. Transmission fragment recovered.' : 'Terminal transmission recorded. Cheerio!');
+      ? 'The infected contact is down. Your survey readings are available to the laboratory team.'
+      : 'The drone’s final transmission has been recorded at E4-03-07.';
+    log(success ? 'Mission complete. Laboratory perimeter secured.' : 'Terminal transmission recorded. Cheerio!');
   }
   function distress() {
     mode('THE_LAST_OF_EE2028');
     state.remaining = source === 'simulation' ? 10 : null;
     log('Drone overturned. Rescue window active.');
   }
-  function simulate(action) {
-    if (source !== 'simulation' || state.ended) return;
-    if (state.mode === 'THE_LAST_OF_EE2028') {
-      if (action === 'rescue') {
-        mode('BATTLE'); log('Rescue confirmed. Drone upright.');
-        if (state.recovered) finish(true);
-        updateUI();
-      }
-      return;
-    }
-    if (action === 'survey') {
-      state.surveying = true; state.scan = 2;
-      ['24.8 °C','1008.6 hPa','52.0 %','[0.0, 0.0, 9.8] m/s²','[0.0, 0.0, 0.0] °/s','[210, 12, -45] mG'].forEach((value,index) => samples.set(sensorNames[index],value));
-      lastSample = performance.now();
-      ui('objective').textContent = 'Investigate the approaching contact';
-      ui('hint').textContent = 'Introduce a contact to enter Battle mode.';
-      log('Simulated survey sample received. Relay located.'); renderSensors();
-    }
-    if (action === 'threat' && state.surveying) {
-      state.contact = true; mode('BATTLE');
-      ui('hint').textContent = 'Fire with at least 5/10 charge to secure the relay.';
-      log('Simulated proximity contact. Entering Battle mode.');
-    }
-    if (action === 'recharge' && state.mode === 'BATTLE') {
-      state.charge = Math.min(10,state.charge + 3); log('Charge updated to ' + state.charge + '/10.');
-    }
-    if (action === 'fire' && state.mode === 'BATTLE') {
-      if (state.charge < 5) { log('Fire rejected. Insufficient charge.'); return; }
-      state.charge -= 5; state.shot = 0.3; log('Laser fired. Remaining charge ' + state.charge + '/10.');
+  function singlePress() {
+    if (state.mode !== 'BATTLE' || state.ended) return;
+    state.charge = Math.min(10, state.charge + 3);
+    log('PB single press. Laser charge ' + state.charge + '/10.');
+    if (state.charge >= 5) {
+      state.charge -= 5;
+      state.shot = 0.3;
+      log('Laser fired. Remaining charge ' + state.charge + '/10.');
       if (state.contact) {
-        state.contact = false; state.recovered = true;
-        ui('objective').textContent = 'Relay secured. Restore the drone';
-        ui('hint').textContent = 'Recover from the emergency to receive the transmission.';
+        state.contact = false;
+        state.recovered = true;
+        ui('objective').textContent = 'Perimeter clear. Recover the drone';
         distress();
       }
     }
-    if (action === 'overturn') distress();
+    updateUI();
+  }
+  function pressPB() {
+    const now = performance.now();
+    if (pendingPress !== null) {
+      clearTimeout(pendingPress);
+      pendingPress = null;
+      if (now - pressedAt < 500) {
+        const rescuing = state.mode === 'THE_LAST_OF_EE2028';
+        mode(state.mode === 'BATTLE' ? 'STANDBY' : 'BATTLE');
+        log(rescuing ? 'PB double press. Emergency cleared.' : 'PB double press. Entering ' + state.mode + '.');
+        if (rescuing && state.recovered) finish(true);
+        updateUI();
+        return;
+      }
+      singlePress();
+    }
+    pressedAt = now;
+    pendingPress = setTimeout(() => { pendingPress = null; singlePress(); }, 500);
+  }
+  function simulate(action) {
+    if (source !== 'simulation' || state.ended) return;
+    if (action === 'pb') { pressPB(); return; }
+    if (action === 'survey' && state.mode === 'STANDBY') {
+      state.surveying = true;
+      state.scan = 2;
+      ['24.8 °C','1008.6 hPa','52.0 %','[0.0, 0.0, 9.8] m/s²','[0.0, 0.0, 0.0] °/s','[210, 12, -45] mG'].forEach((value,index) => samples.set(sensorNames[index],value));
+      lastSample = performance.now();
+      ui('objective').textContent = 'Defend the laboratory perimeter';
+      ui('hint').textContent = 'Introduce a zombie contact, then double press PB to enter Battle.';
+      log('Simulated habitat sample received. Relative humidity 52.0%.');
+      renderSensors();
+    }
+    if (action === 'threat') {
+      state.contact = true;
+      log('Simulated zombie contact at the perimeter.');
+    }
+    if (action === 'overturn' && state.mode === 'BATTLE') distress();
     updateUI();
   }
   function ingest(line) {
@@ -124,22 +141,26 @@
     }
   }
   function updateUI() {
-    ui('mode').textContent = state.mode.replaceAll('_',' ');
+    const emergency = state.mode === 'THE_LAST_OF_EE2028';
+    ui('mode').textContent = emergency ? 'BATTLE' : state.mode;
+    ui('boardLed').className = emergency ? 'fast' : state.mode.toLowerCase();
+    ui('ledPattern').textContent = emergency ? 'LED · 2 Hz' : state.mode === 'BATTLE' ? 'LED · 1 Hz' : state.mode === 'STANDBY' ? 'LED · steady on' : 'LED · —';
+    ui('pbHint').textContent = emergency ? 'Double press PB within 0.5 s to clear the emergency.'
+      : state.mode === 'BATTLE' ? 'Single press to charge. Double press to return to Standby.'
+      : 'Double press within 0.5 s to enter Battle. A single press is ignored in Standby.';
     ui('charge').textContent = state.charge === null ? '— / 10' : state.charge + ' / 10';
     ui('chargeBars').replaceChildren(...Array.from({length:10},(_,index) => {
       const bar = document.createElement('i'); bar.className = index < state.charge ? 'on' : ''; return bar;
     }));
     ui('emergency').hidden = state.mode !== 'THE_LAST_OF_EE2028' || state.ended;
     ui('countdown').textContent = state.remaining === null ? 'AWAITING EVENT' : state.remaining.toFixed(1);
-    ui('coordinates').textContent = state.contact ? 'CONTACT / SIMULATED' : 'RELAY / ' + (state.recovered ? 'SECURED' : 'SILENT');
-    for (const action of ['survey','threat','recharge','fire','overturn','rescue']) {
-      const rescueMode = state.mode === 'THE_LAST_OF_EE2028';
-      ui(action).disabled = state.ended || (rescueMode ? action !== 'rescue' : action === 'rescue')
-        || (action === 'threat' && !state.surveying)
-        || (['fire','recharge'].includes(action) && state.mode !== 'BATTLE');
-    }
+    ui('coordinates').textContent = state.contact ? 'ZOMBIE CONTACT / SIMULATED' : 'PERIMETER / CLEAR';
+    ui('pb').disabled = state.ended;
+    ui('survey').disabled = state.ended || state.mode !== 'STANDBY';
+    ui('threat').disabled = state.ended || emergency || !state.surveying || state.contact;
+    ui('overturn').disabled = state.ended || state.mode !== 'BATTLE';
   }
-  for (const action of ['survey','threat','recharge','fire','overturn','rescue']) ui(action).onclick = () => simulate(action);
+  for (const action of ['pb','survey','threat','overturn']) ui(action).onclick = () => simulate(action);
   ui('restart').onclick = reset;
   ui('source').onchange = event => {
     source = event.target.value;
@@ -203,8 +224,9 @@
       box(x,-1,z,3,4+i%7,3,'#30403f');
     }
     box(0,-1,-15,5,1,5,'#475452');
-    box(0,0,-15,1.3,15,1.3,state.recovered?'#a9c79b':'#65706a');
-    box(0,10,-15,5,.7,.6,'#6d7770');
+    box(0,0,-17,5,6,2,state.recovered?'#a9c79b':'#65706a');
+    box(0,2,-14.8,4,.25,.1,'#c2ec9e');
+    box(0,6,-17,.3,4,.3,'#76877d');
     box(-7,-1,-19,3,4,3,'#3c4c49');
     const down=state.mode==='THE_LAST_OF_EE2028'||state.ended&&!state.recovered;
     const y=down?0:4+Math.sin(clock*2)*.15;
@@ -217,7 +239,11 @@
       }
       box(0,y+.15,-1.6,.3,.3,.9,state.mode==='BATTLE'?'#e5c593':'#54675f');
     }
-    if(state.contact) box(5,3+Math.sin(clock*3),-9,1,1.5,1,'#c39273');
+    if (state.contact) {
+      box(5,-.8,-9,.55,1.7,.35,'#6a5856');
+      box(5,.9,-9,.75,1.3,.4,'#876657');
+      box(5,2.2,-9,.42,.72,.38,'#aa846c');
+    }
     faces.sort((a,b)=>b.depth-a.depth);
     for(const face of faces) {
       context.beginPath();face.vertices.forEach((vertex,index)=>index?context.lineTo(vertex.x,vertex.y):context.moveTo(vertex.x,vertex.y));

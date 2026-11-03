@@ -2,28 +2,29 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VESPER — The Last Signal</title>
+<title>VESPER — The Last of EE2028</title>
 <link rel="stylesheet" href="flight.css">
 </head>
 <body>
-<header><a class="brand" href="./">△ VESPER <span>THE LAST SIGNAL</span></a><span class="status" id="connection">SIMULATION</span></header>
+<header><a class="brand" href="./">△ VESPER <span>THE LAST OF EE2028</span></a><span class="status" id="connection">SIMULATION</span></header>
 <main>
-<div class="mission"><div><span class="eyebrow">EXPEDITION 09 / RELAY OUTPOST</span><h1>Someone was here.</h1></div><button id="restart">New expedition ↗</button></div>
+<div class="mission"><div><span class="eyebrow">YEAR 6202 / NUS / E4-03-07</span><h1>Laboratory Command Centre</h1></div><button id="restart">Reset mission ↗</button></div>
 <section class="scene">
-<canvas id="world" aria-label="Three dimensional drone and abandoned relay outpost. Drag to orbit the camera." tabindex="0"></canvas>
-<div class="scene-top"><span>OBSIDIAN BASIN · 07</span><button id="camera">Forward camera</button></div>
-<div class="objective"><span class="eyebrow">MISSION OBJECTIVE</span><h2 id="objective">Recover the last transmission</h2><p id="hint">Begin the survey to wake the relay.</p></div>
+<canvas id="world" aria-label="Three dimensional drone and ruined Singapore streets outside the NUS laboratory. Drag to orbit the camera." tabindex="0"></canvas>
+<div class="scene-top"><span>SINGAPORE / LAB PERIMETER</span><button id="camera">Forward camera</button></div>
+<div class="objective"><span class="eyebrow">MISSION OBJECTIVE</span><h2 id="objective">Scout for a human habitat</h2><p id="hint">Survey the district, then defend the lab from the infected.</p></div>
 <div class="emergency" id="emergency" hidden><span>THE LAST OF EE2028</span><strong id="countdown">10.0</strong><p>Restore the drone before the signal is lost.</p></div>
 <div class="ending" id="ending" hidden><span class="eyebrow" id="endingLabel"></span><h2 id="endingTitle"></h2><p id="endingText"></p></div>
-<div class="scene-bottom"><span id="sceneLabel">SIMULATED WORLD · DRAG TO ORBIT</span><span id="coordinates">RELAY / NO CONTACT</span></div>
+<div class="scene-bottom"><span id="sceneLabel">SIMULATED WORLD · DRAG TO ORBIT</span><span id="coordinates">PERIMETER / CLEAR</span></div>
 </section>
 <section class="instruments">
-<div><span class="eyebrow">DRONE STATE</span><strong id="mode">STANDBY</strong></div>
-<div><span class="eyebrow">LASER RESERVE</span><strong id="charge">5 / 10</strong><div id="chargeBars" class="charge-bars"></div></div>
+<div><span class="eyebrow">DRONE MODE</span><strong><i id="boardLed" aria-hidden="true"></i><span id="mode">STANDBY</span></strong><small id="ledPattern"></small></div>
+<div><span class="eyebrow">LASER CHARGE</span><strong id="charge">0 / 10</strong><div id="chargeBars" class="charge-bars"></div></div>
 <div><span class="eyebrow">SIGNAL SOURCE</span><select id="source" aria-label="Signal source"><option value="simulation">Simulation</option><option value="replay">UART log replay</option></select><small id="freshness">Browser-generated events</small></div>
 </section>
 <section id="simulationControls" class="controls" aria-label="Simulation controls">
-<button id="survey" class="primary">Begin survey</button><button id="threat">Introduce contact</button><button id="recharge">Charge +3</button><button id="fire">Fire laser</button><button id="overturn">Overturn drone</button><button id="rescue">Rescue drone</button>
+<button id="pb" class="primary">Press PB</button><button id="survey">Sample habitat</button><button id="threat">Simulate zombie arrival</button><button id="overturn">Simulate overturn</button>
+<p id="pbHint">Double press within 0.5 s to enter Battle. A single press is ignored in Standby.</p>
 </section>
 <section id="replayPanel" class="panel" hidden><label for="uart">Replay firmware output</label><p>Paste UART text to visualize reported modes, charge, warnings and events. No device is connected.</p><textarea id="uart" rows="4" placeholder="Paste complete firmware output lines here"></textarea><button id="ingest">Read messages</button><small id="parseStatus"></small></section>
 <div class="details">
