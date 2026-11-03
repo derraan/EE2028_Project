@@ -31,8 +31,9 @@ extern void initialise_monitor_handles(void); /* for semi-hosting support (print
 #define PB_DOUBLE_PRESS_MS       500U
 #define PB_HOLD_MS               500U
 #define PB_FIRE_PERIOD_MS        500U
-#define ATTACK_MSG_LIMIT         10U
 #define ATTACK_MSG_PERIOD_MS     1000U
+#define RESCUE_TIMEOUT_MS        10000U /* 10s without rescue → self-destruct */
+#define RESCUE_ATTEMPT_LIMIT     5
 
 /* Define states */
 typedef enum {
@@ -67,7 +68,6 @@ uint32_t pb_last_short_press_tick = 0;
 
 float current_accel_z = 0.0f;
 int the_last_of_ee2028_rescue_attempts = 0;
-uint32_t attack_msg_count = 0;
 
 /* Laser Gun Energy Tracking (Initialized to 10/10 full charge, remembers last charge) */
 int laser_charge = 10;
@@ -226,22 +226,15 @@ int main(void)
 					BSP_LED_Toggle(LED2);
 				}
 
-				/* One "Drone was attacked" per second; after 10 with no rescue -> self-destruct */
+				/* Alert once per second (informational only — does not trigger self-destruct) */
 				if ((HAL_GetTick() - tick_1s_attack_msg) >= ATTACK_MSG_PERIOD_MS) {
 					tick_1s_attack_msg = HAL_GetTick();
-					attack_msg_count++;
 					printf("Drone was attacked!\r\n");
-
-					if (attack_msg_count >= ATTACK_MSG_LIMIT) {
-						Enter_Self_Destruct("10s elapsed with no rescue (10 attack alerts)");
-					}
 				}
 
-				/* Backup: wall-clock 10s from mode entry */
-				if (current_state == THE_LAST_OF_EE2028 &&
-					(HAL_GetTick() - the_last_of_ee2028_entry_tick) >= (ATTACK_MSG_LIMIT * ATTACK_MSG_PERIOD_MS))
-				{
-					Enter_Self_Destruct("10s rescue window expired");
+				/* Self-destruct: 10s without rescue, or 5 failed upside-down rescues (whichever earlier) */
+				if ((HAL_GetTick() - the_last_of_ee2028_entry_tick) >= RESCUE_TIMEOUT_MS) {
+					Enter_Self_Destruct("10s elapsed without rescue");
 				}
 				break;
 
@@ -381,7 +374,7 @@ void PB_OnDoublePress(void)
 		printf("Rescue attempt %d/5 (Double Press detected)...\r\n", the_last_of_ee2028_rescue_attempts);
 
 		if (current_accel_z < -4.0f) {
-			if (the_last_of_ee2028_rescue_attempts >= 5) {
+			if (the_last_of_ee2028_rescue_attempts >= RESCUE_ATTEMPT_LIMIT) {
 				Enter_Self_Destruct("5 rescue attempts failed while upside down");
 			}
 			else {
@@ -392,7 +385,6 @@ void PB_OnDoublePress(void)
 			current_state = BATTLE_MODE;
 			led_blink_tick = HAL_GetTick();
 			the_last_of_ee2028_rescue_attempts = 0;
-			attack_msg_count = 0;
 			printf("PB Rescue Action: Successfully reverted to Battle Mode.\r\n");
 		}
 	}
@@ -423,7 +415,6 @@ void Enter_The_Last_Of_EE2028(void)
 	tick_1s_attack_msg = HAL_GetTick();
 	led_blink_tick = HAL_GetTick();
 	the_last_of_ee2028_rescue_attempts = 0;
-	attack_msg_count = 0;
 	PB_CancelPendingSingle();
 	pb_last_short_press_tick = 0;
 	printf("Drone is upside down! Entering THE LAST OF EE2028.\r\n");
@@ -439,7 +430,6 @@ void Enter_Self_Destruct(const char *reason)
 	sacrifice_sent = false;
 	cheerio_sent = false;
 	the_last_of_ee2028_rescue_attempts = 0;
-	attack_msg_count = 0;
 	PB_CancelPendingSingle();
 }
 

@@ -18,9 +18,8 @@ Dual-edge EXTI + GPIO duration windows, debounce, and how gestures change mode/l
 ## Noted behaviors (in `Core/Src/main.c`)
 
 1. **Push button (rising + falling + GPIO):** see button enhancement doc above.
-2. **Failed-rescue self-destruct:** In `THE_LAST_OF_EE2028`, each double short-press while still upside down (`accel_z < -4`) counts as one rescue attempt. After **5** failed attempts → self-destruct → `Cheerio!`.
-3. **10 s / 10 attack timeout:** While in `THE_LAST_OF_EE2028`, `Drone was attacked!` prints once per second. After **10** messages (≈10 s) with no successful rescue → self-destruct → `Cheerio!`.
-4. **Laser fire (full-auto hold):** In `BATTLE_MODE`, hold **> 500 ms** to fire. While held and charge ≥ 5/10, shots continue every 500 ms (−5 each). Short single press (after 500 ms window, no second click) recharges +3 when charge &lt; 5/10.
+2. **Self-destruct (whichever first):** In `THE_LAST_OF_EE2028` — (a) **10 s** wall-clock without a successful rescue, or (b) **5** failed rescue doubles while still upside down. Attack alerts print once per second but are **not** counted for explode.
+3. **Laser fire (full-auto hold):** In `BATTLE_MODE`, hold **> 500 ms** to fire. While held and charge ≥ 5/10, shots continue every 500 ms (−5 each). Short single press (after 500 ms window, no second click) recharges +3 when charge &lt; 5/10.
 
 ## Layout
 

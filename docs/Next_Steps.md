@@ -36,7 +36,7 @@ Everything in the assignment's basic specification is a **minimum requirement**.
 - [ ] A double press while upright clears THE_LAST_OF_EE2028 and returns to Battle.
 - [ ] Single presses during THE_LAST_OF_EE2028 are ignored.
 - [ ] Five failed rescue double presses while still upside down enter self-destruct → sacrifice → `Cheerio!` → permanent halt.
-- [ ] After 10 `Drone was attacked!` messages (~10 s) with no rescue, enter self-destruct → sacrifice → `Cheerio!` → permanent halt.
+- [ ] After 10 s wall-clock without rescue (attack alerts are informational only), enter self-destruct → sacrifice → `Cheerio!` → permanent halt. Whichever of 10 s / 5 failed attempts comes first wins.
 - [ ] The terminated state cannot accidentally resume telemetry or process normal controls.
 - [ ] All of the above runs together repeatedly without blocking timing failures.
 

@@ -156,7 +156,8 @@ The drone has no on-screen menu UI in this basic build; **mode + laser + rescue 
                                  ├ attempt <5 → stay in mode
                                  └ attempt ≥5 → SELF_DESTRUCT_*
 
-  (Non-button: 10 attack msgs / 10 s timeout also → SELF_DESTRUCT_*)
+  (Non-button: 10 s wall-clock without rescue also → SELF_DESTRUCT_*;
+   attack alerts print every 1 s but are not counted)
 ```
 
 ### Per-mode button menu
@@ -197,7 +198,7 @@ While `pb_hold_latched &&` GPIO still pressed and mode is Battle:
 2. **Double** = two clicks whose completions are ≤ 500 ms apart.  
 3. **Hold** = keep down past 500 ms (Battle → fire).  
 4. Debounce = ignore EXTI chatter under 100 ms.  
-5. Mode “menus” are entirely these gestures plus (outside this doc) sensors/timeouts for Last-of-EE2028 entry and the 10 s attack timeout.
+5. Mode “menus” are entirely these gestures plus (outside this doc) sensors for Last-of-EE2028 entry and the 10 s rescue wall-clock timeout (whichever comes first vs 5 failed upside-down rescue attempts).
 
 ---
 
