@@ -84,8 +84,8 @@ Browser game + dashboard (*The Last of EE2028*, NUS E4-03-07 in year 6202): 3D l
 ### A. Try VESPER with no hardware (now)
 
 ```bash
-# from repo root
-npx --yes serve Command
+# from repo root (zero dependencies, offline-friendly)
+node Command/serve.mjs
 ```
 
 Open the URL (usually `http://localhost:3000`). The default **Virtual board** source behaves like the firmware (PB tap / hold, flip, disturbance); **Recorded mission** replays `Command/fixtures/*.log`.

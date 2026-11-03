@@ -1,59 +1,177 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VESPER — The Last of EE2028</title>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>VESPER — The Last Signal</title>
+<meta name="description" content="VESPER: The Last Signal. A space-zombie survival game driven by the real EE2028 STM32 drone over UART.">
+<meta name="theme-color" content="#05070d">
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="flight.css">
+<link rel="stylesheet" href="styles/vesper.css">
+<script type="importmap">{"imports":{"three":"./vendor/three/three.module.min.js","three/addons/":"./vendor/three/addons/"}}</script>
 </head>
 <body>
-<header><a class="brand" href="./">△ VESPER <span>THE LAST OF EE2028</span></a><span class="status" id="connection">VIRTUAL BOARD</span></header>
-<main>
-<div class="mission"><div><span class="eyebrow">YEAR 6202 / NUS / E4-03-07</span><h1>Laboratory Command Centre</h1></div><button id="restart">Reset mission ↺</button></div>
+<div id="app" data-mode="STANDBY_MODE">
+  <div id="viewport"></div>
+  <div class="screen-fx" aria-hidden="true"></div>
 
-<section class="scene">
-<canvas id="world" aria-label="Three dimensional drone outside the NUS laboratory in a ruined Singapore street. Drag or use the arrow keys to orbit the camera." tabindex="0"></canvas>
-<div class="scene-top"><span>SINGAPORE / LAB PERIMETER</span><button id="camera">Forward camera</button></div>
-<div class="objective"><span class="eyebrow">MISSION OBJECTIVE</span><h2 id="objective">Scout for a human habitat</h2><p id="hint"></p></div>
-<div class="emergency" id="emergency" hidden><span>THE LAST OF EE2028</span><strong id="countdown">10.0</strong><p id="emergencyHint">Flip the drone upright, then double press PB to rescue.</p></div>
-<div class="ending" id="ending" hidden><span class="eyebrow" id="endingLabel"></span><h2 id="endingTitle"></h2><p id="endingText"></p></div>
-<div class="scene-bottom"><span id="sceneLabel">ORBIT VIEW · DRAG TO EXPLORE</span><span id="coordinates">PERIMETER / CLEAR</span></div>
-</section>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">△</span>
+      <div><strong>VESPER</strong><em>THE LAST SIGNAL</em></div>
+    </div>
+    <div class="mission-meta">
+      <span>NUS · E4-03-07</span>
+      <span id="clock">6202.11.03 // 00:00:00</span>
+    </div>
+    <div class="top-actions">
+      <span class="link-pill" id="connection" data-link="sim">VIRTUAL BOARD</span>
+      <button id="camera" class="chip" type="button">Drone cam</button>
+      <button id="audio" class="chip" type="button" aria-pressed="false">Sound off</button>
+      <button id="restart" class="chip" type="button">Reset</button>
+    </div>
+  </header>
 
-<section class="instruments">
-<div><span class="eyebrow">DRONE MODE</span><strong><i id="boardLed" aria-hidden="true"></i><span id="mode">STANDBY</span></strong><small id="ledPattern"></small></div>
-<div><span class="eyebrow">LASER CHARGE</span><strong id="charge">0 / 10</strong><div id="chargeBars" class="charge-bars"></div><small id="armed">Not armed · needs ≥5/10</small></div>
-<div><span class="eyebrow">SIGNAL SOURCE</span><select id="source" aria-label="Signal source">
-<option value="simulation">Virtual board (in browser)</option>
-<option value="replay">Recorded mission</option>
-<option value="paste">Paste UART log</option>
-<option value="serial">Live board (Web Serial)</option>
-</select><small id="freshness">Browser board emits the same UART lines as the firmware</small></div>
-</section>
+  <aside class="hud hud-left" aria-label="Drone status">
+    <section class="card mode-card">
+      <h2 class="card-title"><b>//</b> 01 Drone status</h2>
+      <div class="mode-screen">
+        <span class="mode-led" id="boardLed" aria-hidden="true"></span>
+        <strong id="mode">STANDBY</strong>
+        <small id="ledPattern">LED · steady on</small>
+      </div>
+      <dl class="kv">
+        <div><dt>Firmware</dt><dd id="modeRaw">STANDBY_MODE</dd></div>
+        <div><dt>Attitude</dt><dd id="attitude">Upright</dd></div>
+      </dl>
+    </section>
 
-<section id="simulationControls" class="controls" aria-label="Virtual board controls">
-<button id="pb" class="primary">PB · Double tap for Battle</button><button id="threat">Zombie arrives</button><button id="overturn">Flip upside down</button>
-<p id="pbHint">Tap = press · hold ≥0.5 s = hold · Space bar works too.</p>
-</section>
+    <section class="card charge-card">
+      <h2 class="card-title"><b>//</b> 02 Laser core</h2>
+      <div class="charge-head"><strong id="charge">0<span>/10</span></strong><span id="armed" class="armed">STANDBY</span></div>
+      <div class="charge-meter" id="chargeMeter" role="meter" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0" aria-label="Laser charge">
+        <i id="chargeFill"></i><b class="fire-line" aria-hidden="true"></b>
+      </div>
+      <div class="meter-legend"><span>0</span><span>FIRE ≥ 5</span><span>10</span></div>
+    </section>
 
-<section id="replayControls" class="controls" aria-label="Recorded missions" hidden>
-<button id="replaySample" class="primary">Replay full mission</button><button id="replayEarly">Replay rescue-limit self-destruct</button><button id="replayStop">Stop</button>
-<p>Plays <code>fixtures/*.log</code> through the same parser as live UART.</p>
-</section>
+    <section class="card objective-card">
+      <h2 class="card-title"><b>//</b> 03 Mission</h2>
+      <h3 id="objective">Scout for a human habitat</h3>
+      <p id="hint"></p>
+    </section>
+  </aside>
 
-<section id="pastePanel" class="panel" hidden><label for="uart">Replay firmware output</label><p>Paste UART text to visualize reported modes, charge, warnings and events. No device is connected.</p><textarea id="uart" rows="4" placeholder="Paste complete firmware output lines here"></textarea><button id="ingest">Read messages</button><small id="parseStatus"></small></section>
+  <aside class="hud hud-right" aria-label="Threat and telemetry">
+    <section class="card radar-card">
+      <h2 class="card-title"><b>//</b> 04 Contact radar <span class="tag">SIMULATED</span></h2>
+      <div class="radar-wrap"><canvas id="radar" aria-label="Radar of simulated infected contacts around the drone"></canvas></div>
+      <div class="threat-stats">
+        <div><span>Infected</span><strong id="infected">0</strong></div>
+        <div><span>Neutralised</span><strong id="kills">0</strong></div>
+        <div><span>Wave</span><strong id="wave">0</strong></div>
+      </div>
+      <small id="nearest" class="nearest">No contacts</small>
+    </section>
 
-<section id="serialControls" class="controls" aria-label="Live board" hidden>
-<button id="serialConnect" class="primary">Connect board</button><button id="serialDisconnect">Disconnect</button>
-<p id="serialHint">Chrome / Edge · ST-LINK virtual COM @ 115200 8N1. Disconnecting is link loss, not mission end.</p>
-</section>
+    <section class="card telemetry-card">
+      <h2 class="card-title"><b>//</b> 05 Telemetry <span id="sampleAge" class="tag">NO SAMPLE</span></h2>
+      <div id="sensors" class="sensor-list"></div>
+      <p id="warning" class="warning" role="status">No active warning reported.</p>
+    </section>
+  </aside>
 
-<div class="details">
-<details class="panel" open><summary>Sensor instruments <span id="sampleAge">No sample</span></summary><p>Values keep the units printed by the firmware. Telemetry streams once per second in Standby only.</p><div id="sensors" class="sensor-grid"></div><p id="warning" role="status">No active warning reported.</p></details>
-<section class="panel transmissions"><div class="log-heading"><span class="eyebrow">TRANSMISSION LOG</span><span id="eventCount">0 LINES</span></div><ol id="log" aria-live="polite"></ol></section>
+  <footer class="deck">
+    <div class="deck-main">
+      <div class="deck-panel" id="simulationControls" aria-label="Virtual board controls">
+        <button id="pb" class="pb-button" type="button" aria-describedby="pbHint">
+          <svg class="pb-ring" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" pathLength="100"/></svg>
+          <span>PB</span>
+        </button>
+        <div class="pb-meta"><strong id="pbAction">Double tap for Battle</strong><small id="pbHint">Tap · hold ≥ 0.5 s to fire · Space bar</small></div>
+        <button id="overturn" class="deck-btn" type="button">Flip upside down</button>
+        <button id="threat" class="deck-btn danger" type="button">Disturbance</button>
+      </div>
+      <div class="deck-panel" id="replayControls" hidden>
+        <button id="replaySample" class="deck-btn primary" type="button">Replay full mission</button>
+        <button id="replayEarly" class="deck-btn" type="button">Replay rescue-limit</button>
+        <button id="replayStop" class="deck-btn" type="button">Stop</button>
+        <small>Plays <code>fixtures/*.log</code> through the shared parser.</small>
+      </div>
+      <div class="deck-panel paste" id="pastePanel" hidden>
+        <label for="uart" class="sr-only">Firmware output</label>
+        <textarea id="uart" rows="2" placeholder="Paste Tera Term output here…"></textarea>
+        <button id="ingest" class="deck-btn primary" type="button">Read messages</button>
+        <small id="parseStatus"></small>
+      </div>
+      <div class="deck-panel" id="serialControls" hidden>
+        <button id="serialConnect" class="deck-btn primary" type="button">Connect board</button>
+        <button id="serialDisconnect" class="deck-btn" type="button">Disconnect</button>
+        <small id="serialHint">Chrome / Edge · ST-LINK VCP @ 115200 8N1 · unplugging is link loss, not mission end.</small>
+      </div>
+      <div class="deck-source">
+        <label for="source">Signal source</label>
+        <select id="source">
+          <option value="simulation">Virtual board</option>
+          <option value="replay">Recorded mission</option>
+          <option value="paste">Paste UART log</option>
+          <option value="serial">Live board (Web Serial)</option>
+        </select>
+        <small id="freshness">Browser board prints the firmware's UART lines</small>
+      </div>
+    </div>
+    <details class="terminal" id="terminal">
+      <summary><b>//</b> UART transmission <span id="eventCount">0 LINES</span></summary>
+      <ol id="log" aria-live="off"></ol>
+    </details>
+  </footer>
+
+  <div class="emergency" id="emergency" hidden role="alert">
+    <div class="emergency-panel">
+      <svg viewBox="0 0 64 56" aria-hidden="true"><path d="M32 3 61 53H3Z"/><path d="M32 20v16M32 42v4"/></svg>
+      <div class="emergency-copy">
+        <span class="emergency-label" id="emergencyLabel">EMERGENCY</span>
+        <strong class="emergency-title">THE LAST OF EE2028</strong>
+      </div>
+      <span class="emergency-clock" id="countdown">00:10.0</span>
+      <div class="emergency-rescue">
+        <div class="pips" id="rescuePips" aria-label="Failed rescues"><i></i><i></i><i></i><i></i><i></i></div>
+        <p id="emergencyHint">Flip the drone upright, then double press PB to rescue.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="ending" id="ending" hidden>
+    <div class="ending-panel">
+      <span class="eyebrow" id="endingLabel">MISSION RECORD CLOSED</span>
+      <h2 id="endingTitle">The last signal.</h2>
+      <p id="endingText"></p>
+      <div class="ending-stats">
+        <div><span>Neutralised</span><strong id="endKills">0</strong></div>
+        <div><span>Waves</span><strong id="endWaves">0</strong></div>
+        <div><span>Cause</span><strong id="endCause">—</strong></div>
+      </div>
+      <button id="endingRestart" class="deck-btn primary" type="button">Reboot drone</button>
+    </div>
+  </div>
+
+  <div class="intro" id="intro">
+    <div class="intro-panel">
+      <span class="eyebrow">EE2028 // MIXED-REALITY SURVIVAL</span>
+      <h1>VESPER<span>THE LAST SIGNAL</span></h1>
+      <p>Year 6202. Spore pods are falling from orbit onto Singapore, and the infected are converging on <b>NUS E4-03-07</b> — humanity's last laboratory. One defence drone remains. <b>Its controller is the STM32 in your hands.</b></p>
+      <ul>
+        <li><b>PB</b> double tap — Standby ⇄ Battle</li>
+        <li><b>PB</b> tap — charge +3 · <b>hold ≥ 0.5 s</b> — fire (needs 5/10)</li>
+        <li><b>Flip</b> the board — The Last of EE2028 · flip back and double tap to rescue</li>
+      </ul>
+      <button id="enter" class="deck-btn primary big" type="button">Enter command</button>
+      <small>The world is fiction. Every drone action is what the firmware reports.</small>
+    </div>
+  </div>
+
+  <div id="toast" role="status" hidden></div>
+  <noscript><p class="noscript">VESPER needs JavaScript and a local server: <code>npx --yes serve Command</code></p></noscript>
 </div>
-<footer><span>VESPER / FIELD OPERATIONS</span><span>The world and its encounters are fiction. Drone state is only what the firmware (or virtual board) reports.</span></footer>
-</main>
-<div id="toast" role="status" hidden></div>
 <script type="module" src="./src/main.js"></script>
-</body></html>
+</body>
+</html>

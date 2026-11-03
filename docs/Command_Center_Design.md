@@ -2,7 +2,7 @@
 
 Web mission-control UI for EE2028 Assignment 2 enhancements **#4** (UART Command Center) and stretch **#6** (Wi‑Fi / BLE).
 
-**Status:** VESPER is now a game page (*The Last of EE2028* lab scene, merged from `vesper-3d-concept`) driven by one parser. Sources: in-browser **virtual board** (`sim.js`, mirrors `main.c`), fixture replay, pasted UART, Web Serial — all **implemented** under `Command/src/`. Live board stream waits on Cube USART retarget (same parser). Optional Node bridge remains a stub — Web Serial is the preferred live path.
+**Status:** VESPER is now *The Last Signal*, a Three.js space-zombie game (blood moon over NUS E4-03-07, spore meteors, the infected, VESPER-07 drone) with a full game HUD, driven by one parser. See [Command/README.md](../Command/README.md) for the event → world mapping. Sources: in-browser **virtual board** (`sim.js`, mirrors `main.c`), fixture replay, pasted UART, Web Serial — all **implemented** under `Command/src/`. Live board stream waits on Cube USART retarget (same parser). Optional Node bridge remains a stub — Web Serial is the preferred live path.
 
 Sources:
 
@@ -60,7 +60,7 @@ Mandatory UART telemetry must keep working. Wireless is an add-on, never a UART 
 
 Three layers share one JS state model (as-built):
 
-1. **UI** — `Command/index.html` + `bindings.js` (HUD) + `scene.js` (canvas world) served on localhost  
+1. **UI** — `Command/index.html` + `bindings.js` (HUD) + `src/world/` (Three.js world, radar, audio) served on localhost  
 2. **Parser / state** — `parser.js` / `state.js` turn UART/`EVT` lines into `{ mode, telemetry, charge, events… }`  
 3. **Transport**
    - **Phase 0 (done):** virtual board `sim.js` prints firmware-identical UART lines into the same parser  
@@ -85,7 +85,7 @@ Parser also accepts legacy mode aliases (`THE_LAST_OF_EE2028`, `LAST_OF_2028`, `
 
 1. Flash firmware; confirm Tera Term sees telemetry.  
 2. **Close Tera Term** (only one app can own the COM port).  
-3. From repo root: `npx --yes serve Command`  
+3. From repo root: `node Command/serve.mjs` (or `npx --yes serve Command`)  
 4. Open Chrome → `http://localhost:3000`  
 5. Source **Live board (Web Serial)** → **Connect board** → choose ST-LINK VCP @ **115200 8N1**  
 6. Dashboard updates; raw lines can still be logged in a debug panel if needed  
@@ -107,11 +107,13 @@ Parser also accepts legacy mode aliases (`THE_LAST_OF_EE2028`, `LAST_OF_2028`, `
 ```text
 Command/
   index.html          # VESPER game page
-  flight.css          # styles
+  styles/vesper.css   # dashboard styles
+  serve.mjs           # zero-dependency static server
+  vendor/three/       # vendored three.js r169 (MIT)
   src/
     main.js           # sources → parser → HUD + scene, frame loop
     bindings.js       # HUD DOM updates from parser state
-    scene.js          # canvas world renderer (view object in, pixels out)
+    world/            # Three.js world: environment, drone, zombies, effects, radar, audio
     sim.js            # virtual board mirroring Core/Src/main.c
     parser.js         # UART / fixture line parser
     state.js          # shared mission state
