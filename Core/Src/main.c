@@ -1,142 +1,565 @@
-#include "drone.h"
+/******************************************************************************
+ * @file  : main.c
+ * @brief : Main program body
+ * (c) EE2028 Teaching Team
+ ******************************************************************************/
 
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+#include "drone.h"
+#include "telemetry_evt.h"
+#include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01.h"
+#include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01_accelero.h"
+#include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01_tsensor.h"
+#include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01_gyro.h"
+#include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01_hsensor.h"
+#include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01_magneto.h"
+#include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01_psensor.h"
+#include <stdio.h>
+#include <stdbool.h>
+#include <string.h>
+
+#if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
+#include "enhancements.h"
+#include "enhancements_hw.h"
+/* When CubeMX generates I2C for the HT16K33, declare the handle here, e.g.:
+ *   extern I2C_HandleTypeDef hi2c2;
+ * and pass &hi2c2 to Enhancements_HW_Setup. NULL skips the matrix safely. */
+#ifndef EE_MATRIX_I2C
+#define EE_MATRIX_I2C NULL
+#endif
+#endif
+
+extern void initialise_monitor_handles(void); /* for semi-hosting support (printf) */
+
+/* Define thresholds */
+#define THRESHOLD_A 20.0f
+#define THRESHOLD_T 50.0f
+#define THRESHOLD_G 150.0f
+#define THRESHOLD_H 30.0f /* Minimum humidity threshold (desert check) */
+#define THRESHOLD_M 1000.0f
+#define THRESHOLD_P 900.0f
+
+/* Push-button timing (USER button is active-low) */
+#define PB_DEBOUNCE_MS           100U
+#define PB_DOUBLE_PRESS_MS       500U
+#define PB_HOLD_MS               500U
+#define PB_FIRE_PERIOD_MS        500U
+#define ATTACK_MSG_PERIOD_MS     1000U
+#ifndef RESCUE_TIMEOUT_MS
+#define RESCUE_TIMEOUT_MS        10000U /* 10s without rescue → self-destruct */
+#endif
+#define RESCUE_ATTEMPT_LIMIT     5
+
+/* DroneState_t comes from drone.h (shared with the enhancements adapter). */
 DroneState_t current_state = STANDBY_MODE;
 
-/* Global variables for sensors, energy, and push button tracking */
-float T, P, H, A, G, M;
-float laser_charge = 0.0f; /* Scale 0.0 to 1.0 (0/10 to 10/10) */
-uint32_t last_pb_press_time = 0;
-uint8_t pb_press_count = 0;
-uint8_t upside_down_detected = 0;
+/*
+ * Push button: EXTI captures rising+falling edges; main loop reads GPIO level
+ * to confirm press/hold/release and measures the falling→rising duration window.
+ * Configure USER button EXTI as rising AND falling (or poll still recovers release).
+ */
+volatile uint32_t pb_last_edge_tick = 0;
+volatile bool pb_edge_pending = false;
+volatile uint32_t pb_edge_tick = 0;
 
-int main(void) {
-    HAL_Init();
-    SystemClock_Config();
-    MX_GPIO_Init();
-    MX_UART_Init();
+bool pb_is_down = false;
+uint32_t pb_down_tick = 0;
+uint32_t pb_last_press_duration_ms = 0;
+bool pb_hold_latched = false;
+bool pb_low_charge_warned = false;
+uint32_t pb_last_fire_tick = 0;
 
-    /* Default entry message */
-    /* UART_Send("Entering STANDBY MODE\r\n"); */
+bool pb_single_armed = false;
+uint32_t pb_single_deadline_tick = 0;
+uint32_t pb_last_short_press_tick = 0;
 
-    while (1) {
-        Read_Sensors();
+float current_accel_z = 0.0f;
+int the_last_of_2028_rescue_attempts = 0;
 
-        switch (current_state) {
-            case STANDBY_MODE:
-                Handle_Standby_Mode();
-                break;
+/* Laser Gun Energy Tracking (Initialized to 10/10 full charge, remembers last charge) */
+int laser_charge = 10;
 
-            case BATTLE_MODE:
-                Handle_Battle_Mode();
-                break;
+/* Timers & State Trackers */
+uint32_t tick_1s_telemetry = 0;
+uint32_t tick_1s_attack_msg = 0;
+uint32_t led_blink_tick = 0;
+uint32_t the_last_of_2028_entry_tick = 0;
+uint32_t noble_sacrifice_tick = 0;
+bool sacrifice_sent = false;
+bool cheerio_sent = false;
 
-            case LAST_OF_2028:
-                Handle_Last_Of_2028_Mode();
-                break;
-        }
+/* Prototypes */
+void Check_And_Log_Thresholds(float t, float p, float h, float a[3], float g[3], float m[3]);
+void Process_PushButton(void);
+void PB_OnDoublePress(void);
+void PB_OnSinglePress(void);
+void PB_CancelPendingSingle(void);
+void Enter_The_Last_Of_2028(void);
+void Enter_Self_Destruct(const char *reason);
+#if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
+static void Fill_DroneStatus(DroneStatus_t *out);
+static void Enhancements_Tick(void);
+#endif
 
-        HAL_Delay(100); /* Main loop tick */
-    }
+int main(void)
+{
+	initialise_monitor_handles(); /* for semi-hosting support (printf) */
+
+	/* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+	HAL_Init();
+
+	/* Peripheral and Board Initializations using BSP functions */
+	BSP_LED_Init(LED2);
+	/* Prefer BOTH edges so rising (release) and falling (press) each generate EXTI.
+	 * If the BSP only enables one edge, Process_PushButton() still tracks level via GPIO. */
+	BSP_PB_Init(BUTTON_USER, BUTTON_MODE_EXTI);
+
+	BSP_ACCELERO_Init();
+	BSP_TSENSOR_Init();
+	BSP_GYRO_Init();
+	BSP_HSENSOR_Init();
+	BSP_MAGNETO_Init();
+	BSP_PSENSOR_Init();
+
+#if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
+	{
+		Enhancements_Config_t ee_cfg;
+		(void)Enhancements_HW_Setup(&ee_cfg, EE_MATRIX_I2C);
+		Enhancements_Init(&ee_cfg);
+	}
+#endif
+
+	printf("Drone initialized: Entering STANDBY MODE (Laser Charge: %d/10)\n", laser_charge);
+	Telemetry_EvtMode(EVT_MODE_STANDBY);
+	Telemetry_EvtCharge((uint8_t)laser_charge);
+
+	while (1)
+	{
+		/* --- 1. Read All Sensors --- */
+		float accel_data[3];
+		int16_t accel_data_i16[3] = { 0 };
+		BSP_ACCELERO_AccGetXYZ(accel_data_i16);
+		accel_data[0] = (float)accel_data_i16[0] * (9.8f / 1000.0f);
+		accel_data[1] = (float)accel_data_i16[1] * (9.8f / 1000.0f);
+		accel_data[2] = (float)accel_data_i16[2] * (9.8f / 1000.0f);
+		current_accel_z = accel_data[2];
+
+		float gyro_data[3];
+		BSP_GYRO_GetXYZ(gyro_data);
+		gyro_data[0] = gyro_data[0] / 1000.0f;
+		gyro_data[1] = gyro_data[1] / 1000.0f;
+		gyro_data[2] = gyro_data[2] / 1000.0f;
+
+		float magneto_data[3];
+		int16_t magneto_data_i16[3] = { 0 };
+		BSP_MAGNETO_GetXYZ(magneto_data_i16);
+		magneto_data[0] = (float)magneto_data_i16[0];
+		magneto_data[1] = (float)magneto_data_i16[1];
+		magneto_data[2] = (float)magneto_data_i16[2];
+
+		float temp_data = BSP_TSENSOR_ReadTemp();
+		float press_data = BSP_PSENSOR_ReadPressure();
+		float humid_data = BSP_HSENSOR_ReadHumidity();
+
+		/* --- Global Check for "The Last of EE2028" (Upside Down) --- */
+		if ((current_state == STANDBY_MODE || current_state == BATTLE_MODE) && accel_data[2] < -4.0f)
+		{
+			Enter_The_Last_Of_2028();
+		}
+
+		/* --- Push button: EXTI edges + GPIO level hold/release --- */
+		Process_PushButton();
+
+		/* --- 2. State Machine Handling --- */
+		switch (current_state)
+		{
+			case STANDBY_MODE:
+				BSP_LED_On(LED2);
+
+				{
+					bool tag_exceeded = (temp_data > THRESHOLD_T) ||
+						(accel_data[0] > THRESHOLD_A || accel_data[1] > THRESHOLD_A || accel_data[2] > THRESHOLD_A) ||
+						(gyro_data[0] > THRESHOLD_G || gyro_data[1] > THRESHOLD_G || gyro_data[2] > THRESHOLD_G);
+
+					bool any_exceeded = tag_exceeded ||
+						(press_data < THRESHOLD_P) ||
+						(humid_data < THRESHOLD_H) ||
+						(magneto_data[0] > THRESHOLD_M || magneto_data[1] > THRESHOLD_M || magneto_data[2] > THRESHOLD_M);
+
+					if (tag_exceeded) {
+						current_state = BATTLE_MODE;
+						led_blink_tick = HAL_GetTick();
+						PB_CancelPendingSingle();
+						printf("Critical T/A/G threshold violated -> Entering BATTLE MODE. (Laser Charge: %d/10)\r\n", laser_charge);
+						Telemetry_EvtMode(EVT_MODE_BATTLE);
+					}
+					else if (any_exceeded) {
+						if ((HAL_GetTick() - tick_1s_telemetry) >= 1000) {
+							tick_1s_telemetry = HAL_GetTick();
+							Check_And_Log_Thresholds(temp_data, press_data, humid_data, accel_data, gyro_data, magneto_data);
+						}
+					}
+					else {
+						if ((HAL_GetTick() - tick_1s_telemetry) >= 1000) {
+							tick_1s_telemetry = HAL_GetTick();
+							printf("Telemetry -> T:%.1f °C, P:%.1f hPa, H:%.1f %% | Accel:[%.1f, %.1f, %.1f] m/s^2 | Gyro:[%.1f, %.1f, %.1f] dps | Magneto:[%.1f, %.1f, %.1f] mgauss\r\n",
+								temp_data, press_data, humid_data,
+								accel_data[0], accel_data[1], accel_data[2],
+								gyro_data[0], gyro_data[1], gyro_data[2],
+								magneto_data[0], magneto_data[1], magneto_data[2]);
+						}
+					}
+				}
+				break;
+
+			case BATTLE_MODE:
+				/* LED blinking at 1 Hz (toggle every 500ms) */
+				if ((HAL_GetTick() - led_blink_tick) >= 500) {
+					led_blink_tick = HAL_GetTick();
+					BSP_LED_Toggle(LED2);
+				}
+
+				/* Full-auto fire while held: GPIO still low after hold latch */
+				if (pb_hold_latched && pb_is_down &&
+					(BSP_PB_GetState(BUTTON_USER) == GPIO_PIN_RESET))
+				{
+					if (laser_charge < 5) {
+						if (!pb_low_charge_warned) {
+							printf("Laser charge too low (%d/10) to fire! Please single-press to recharge the laser gun.\r\n", laser_charge);
+							pb_low_charge_warned = true;
+						}
+					}
+					else if ((HAL_GetTick() - pb_last_fire_tick) >= PB_FIRE_PERIOD_MS) {
+						pb_last_fire_tick = HAL_GetTick();
+						laser_charge -= 5;
+						printf("Laser gun fired continuously! PEW PEW! (Remaining charge: %d/10)\r\n", laser_charge);
+						Telemetry_EvtFire((uint8_t)laser_charge); /* charge AFTER the shot */
+#if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
+						Enhancements_OnEvent(DRONE_EVENT_LASER_FIRED, HAL_GetTick());
+#endif
+						if (laser_charge < 5) {
+							printf("Laser charge too low (%d/10) to fire! Please single-press to recharge the laser gun.\r\n", laser_charge);
+							pb_low_charge_warned = true;
+						}
+					}
+				}
+				break;
+
+			case THE_LAST_OF_2028:
+				/* LED blinking at 2 Hz (toggle every 250ms) */
+				if ((HAL_GetTick() - led_blink_tick) >= 250) {
+					led_blink_tick = HAL_GetTick();
+					BSP_LED_Toggle(LED2);
+				}
+
+				/* Alert once per second (informational only — does not trigger self-destruct) */
+				if ((HAL_GetTick() - tick_1s_attack_msg) >= ATTACK_MSG_PERIOD_MS) {
+					uint32_t elapsed;
+					uint32_t remaining;
+					tick_1s_attack_msg = HAL_GetTick();
+					printf("Drone was attacked!\r\n");
+					Telemetry_EvtAttack();
+					elapsed = HAL_GetTick() - the_last_of_2028_entry_tick;
+					remaining = (elapsed >= RESCUE_TIMEOUT_MS) ? 0U : (RESCUE_TIMEOUT_MS - elapsed);
+					Telemetry_EvtCountdown(remaining);
+				}
+
+				/* Self-destruct: 10s without rescue, or 5 failed upside-down rescues (whichever earlier) */
+				if ((HAL_GetTick() - the_last_of_2028_entry_tick) >= RESCUE_TIMEOUT_MS) {
+					Enter_Self_Destruct("10s elapsed without rescue");
+				}
+				break;
+
+			case SELF_DESTRUCT_TRIGGERED:
+				if (!sacrifice_sent) {
+					printf("Drone has made a noble sacrifice for mankind...\r\n");
+					noble_sacrifice_tick = HAL_GetTick();
+					sacrifice_sent = true;
+				}
+
+				if (sacrifice_sent && !cheerio_sent && (HAL_GetTick() - noble_sacrifice_tick) >= 1000) {
+					Telemetry_EvtTerminate(); /* immediately before Cheerio! */
+					printf("Cheerio!\r\n");
+					cheerio_sent = true;
+					current_state = SELF_DESTRUCT_DEAD;
+				}
+				break;
+
+			case SELF_DESTRUCT_DEAD:
+				BSP_LED_Off(LED2);
+#if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
+				/* Bounded final-effects phase before permanent halt. */
+				{
+					DroneStatus_t st;
+					uint32_t now;
+					Fill_DroneStatus(&st);
+					do {
+						now = HAL_GetTick();
+						Fill_DroneStatus(&st);
+						Enhancements_Update(&st, now);
+						HAL_Delay(10);
+					} while (Enhancements_FinalEffectsDone(now) == 0U);
+					Enhancements_Shutdown();
+				}
+#endif
+				while (1) {
+					/* Permanent self-destruct halt */
+				}
+				break;
+		}
+
+#if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
+		Enhancements_Tick();
+#endif
+		HAL_Delay(10);
+	}
 }
 
-/* --- STANDBY MODE LOGIC --- */
-void Handle_Standby_Mode(void) {
-    /* LED always ON */
-    /* HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET); */
+/* --- EXTI: stamp rising/falling edges (GPIO level classified in Process_PushButton) --- */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	if (GPIO_Pin != USER_BUTTON_PIN) {
+		return;
+	}
 
-    /* Jump to Battle Mode if T/A/G exceed thresholds */
-    if (T > THRESHOLD_T && A > THRESHOLD_A && G > THRESHOLD_G) {
-        current_state = BATTLE_MODE;
-        /* UART_Send("Entering BATTLE MODE\r\n"); */
-        return;
-    }
-
-    /* Periodic 1s telemetry or threshold violation logs */
-    /* (Implement a 1s non-blocking timer or tick check here) */
+	uint32_t now = HAL_GetTick();
+	if ((now - pb_last_edge_tick) < PB_DEBOUNCE_MS) {
+		return;
+	}
+	pb_last_edge_tick = now;
+	pb_edge_tick = now;
+	pb_edge_pending = true;
 }
 
-/* --- BATTLE MODE LOGIC --- */
-void Handle_Battle_Mode(void) {
-    /* LED blinking at 1 Hz */
+/*
+ * Pair EXTI edge stamps with live GPIO level:
+ *  - falling / GPIO low  -> press start (start duration window)
+ *  - rising  / GPIO high -> press end   (duration = release - press)
+ * Hold: still low after PB_HOLD_MS. Short press: released before PB_HOLD_MS.
+ */
+void Process_PushButton(void)
+{
+	const bool pressed = (BSP_PB_GetState(BUTTON_USER) == GPIO_PIN_RESET);
+	const uint32_t now = HAL_GetTick();
 
-    /* Gyroscope upside-down -> LAST_OF_2028 */
-    if (G_is_upside_down()) {
-        current_state = LAST_OF_2028;
-        return;
-    }
+	/* Optional: consume EXTI edge stamp (confirms an edge occurred; GPIO decides which) */
+	if (pb_edge_pending) {
+		pb_edge_pending = false;
+		(void)pb_edge_tick;
+	}
 
-    /* Core laser charging logic */
-    if (laser_charge < 0.5f) {
-        /* "Recharge!" if < 5/10 */
-        /* Single press adds 3/10 charge */
-    } else {
-        /* Fire laser gun and relay charge level */
-        /* laser_charge -= 0.5f; // Cost per fire */
-    }
+	/* Press start: GPIO low */
+	if (pressed && !pb_is_down) {
+		pb_is_down = true;
+		pb_down_tick = now;
+		pb_hold_latched = false;
+		pb_low_charge_warned = false;
+		pb_last_fire_tick = 0;
+	}
+
+	/* Hold crossed while still down (GPIO still pressed) */
+	if (pb_is_down && pressed && !pb_hold_latched &&
+		(now - pb_down_tick) >= PB_HOLD_MS)
+	{
+		pb_hold_latched = true;
+		PB_CancelPendingSingle();
+		pb_last_short_press_tick = 0;
+		/* Fire immediately on hold latch, then every PB_FIRE_PERIOD_MS */
+		pb_last_fire_tick = now - PB_FIRE_PERIOD_MS;
+		/* Battle fire runs in state machine; other modes ignore hold */
+	}
+
+	/* Release: GPIO high — measure falling→rising window */
+	if (!pressed && pb_is_down) {
+		pb_last_press_duration_ms = now - pb_down_tick;
+		pb_is_down = false;
+
+		if (pb_hold_latched) {
+			/* Hold/release pair: do not treat as a click for double-press */
+			pb_hold_latched = false;
+		}
+		else if (pb_last_press_duration_ms < PB_HOLD_MS) {
+			/* Short press completed (rising after falling within hold window) */
+			if (pb_last_short_press_tick != 0 &&
+				(now - pb_last_short_press_tick) <= PB_DOUBLE_PRESS_MS)
+			{
+				PB_CancelPendingSingle();
+				pb_last_short_press_tick = 0;
+				PB_OnDoublePress();
+			}
+			else {
+				pb_last_short_press_tick = now;
+				pb_single_armed = true;
+				pb_single_deadline_tick = now + PB_DOUBLE_PRESS_MS;
+			}
+		}
+	}
+
+	/* Deferred single press: no second short press within double-press window */
+	if (pb_single_armed && (int32_t)(now - pb_single_deadline_tick) >= 0) {
+		pb_single_armed = false;
+		pb_last_short_press_tick = 0;
+		PB_OnSinglePress();
+	}
 }
 
-/* --- LAST OF 2028 & SELF-DESTRUCT LOGIC --- */
-void Handle_Last_Of_2028_Mode(void) {
-    /* LED blinking at 2 Hz */
-
-    /* Send "Drone was attacked" message every 1s */
-
-    /* Rescue: double press within 10s -> revert to Battle Mode */
-
-    /* If 10s timeout expires without rescue:
-     * 1. Send "Drone has made a noble sacrifice for mankind..."
-     * 2. Wait 1s -> Send "Cheerio!"
-     * 3. Execute SELF-DESTRUCT and sever communication
-     */
+void PB_CancelPendingSingle(void)
+{
+	pb_single_armed = false;
 }
 
-/* --- EXTI Interrupt for Push Button --- */
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-    if (GPIO_Pin == PB_Pin) {
-        uint32_t current_time = HAL_GetTick();
+void PB_OnDoublePress(void)
+{
+	if (current_state == STANDBY_MODE) {
+		current_state = BATTLE_MODE;
+		led_blink_tick = HAL_GetTick();
+		printf("PB Double Press (Standby) -> Entering BATTLE MODE. (Laser Charge: %d/10)\r\n", laser_charge);
+		Telemetry_EvtMode(EVT_MODE_BATTLE);
+	}
+	else if (current_state == BATTLE_MODE) {
+		current_state = STANDBY_MODE;
+		BSP_LED_On(LED2);
+		printf("PB Double Press (Battle) -> Returning to STANDBY MODE. (Laser Charge: %d/10)\r\n", laser_charge);
+		Telemetry_EvtMode(EVT_MODE_STANDBY);
+	}
+	else if (current_state == THE_LAST_OF_2028) {
+		the_last_of_2028_rescue_attempts++;
+		printf("Rescue attempt %d/5 (Double Press detected)...\r\n", the_last_of_2028_rescue_attempts);
 
-        /* Double press vs single press within 0.5s window */
-        if ((current_time - last_pb_press_time) < 500) {
-            pb_press_count++;
-        } else {
-            pb_press_count = 1;
-        }
-        last_pb_press_time = current_time;
-
-        if (pb_press_count == 2) {
-            if (current_state == STANDBY_MODE) {
-                current_state = BATTLE_MODE; /* Double press enters Battle Mode */
-            } else if (current_state == LAST_OF_2028) {
-                current_state = BATTLE_MODE; /* Rescue action */
-            }
-            pb_press_count = 0;
-        }
-    }
+		if (current_accel_z < -4.0f) {
+			if (the_last_of_2028_rescue_attempts >= RESCUE_ATTEMPT_LIMIT) {
+				Enter_Self_Destruct("5 rescue attempts failed while upside down");
+			}
+			else {
+				printf("Drone is still upside down! Flip upright and double press to rescue.\r\n");
+			}
+		}
+		else {
+			current_state = BATTLE_MODE;
+			led_blink_tick = HAL_GetTick();
+			the_last_of_2028_rescue_attempts = 0;
+			printf("PB Rescue Action: Successfully reverted to Battle Mode.\r\n");
+			Telemetry_EvtRescue();
+			Telemetry_EvtMode(EVT_MODE_BATTLE);
+		}
+	}
 }
 
-void Read_Sensors(void) {
-    /* Read T, P, H, A, G, M from I2C/SPI sensors */
+void PB_OnSinglePress(void)
+{
+	if (current_state != BATTLE_MODE) {
+		return; /* Standby / THE_LAST_OF_2028: single presses ignored */
+	}
+
+	if (laser_charge < 5) {
+		laser_charge += 3;
+		if (laser_charge > 10) {
+			laser_charge = 10;
+		}
+		printf("Laser recharging... Current charge: %d/10\r\n", laser_charge);
+		Telemetry_EvtCharge((uint8_t)laser_charge);
+	}
+	else {
+		printf("Laser charge is already sufficient (>=5/10). Hold button >500ms to fire! Or double-press within 500ms to return to standby mode\r\n");
+	}
 }
 
-void Send_Telemetry(void) {
-    /* Periodic UART telemetry stub */
+void Enter_The_Last_Of_2028(void)
+{
+	current_state = THE_LAST_OF_2028;
+	the_last_of_2028_entry_tick = HAL_GetTick();
+	tick_1s_attack_msg = HAL_GetTick();
+	led_blink_tick = HAL_GetTick();
+	the_last_of_2028_rescue_attempts = 0;
+	PB_CancelPendingSingle();
+	pb_last_short_press_tick = 0;
+	printf("Drone is upside down! Entering THE LAST OF EE2028.\r\n");
+	Telemetry_EvtMode(EVT_MODE_THE_LAST_OF_2028);
+	Telemetry_EvtCountdown(RESCUE_TIMEOUT_MS);
 }
 
-void Send_Threshold_Warnings(void) {
-    /* Threshold violation log stub */
+void Enter_Self_Destruct(const char *reason)
+{
+	const char *reason_token = EVT_REASON_TIMEOUT;
+
+	if (current_state == SELF_DESTRUCT_TRIGGERED || current_state == SELF_DESTRUCT_DEAD) {
+		return;
+	}
+	printf("%s! Drone self-destructing...\r\n", reason);
+	/* Map human reason → EVT token (avoid matching "without rescue" as rescue_limit). */
+	if (reason != NULL && strstr(reason, "rescue attempts") != NULL) {
+		reason_token = EVT_REASON_RESCUE_LIMIT;
+	}
+	Telemetry_EvtSelfDestruct(reason_token);
+	current_state = SELF_DESTRUCT_TRIGGERED;
+	sacrifice_sent = false;
+	cheerio_sent = false;
+	the_last_of_2028_rescue_attempts = 0;
+	PB_CancelPendingSingle();
+#if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
+	/* Both timeout and fifth failed rescue converge here — emit once. */
+	Enhancements_OnEvent(DRONE_EVENT_SELF_DESTRUCT_STARTED, HAL_GetTick());
+#endif
 }
 
-uint8_t G_is_upside_down(void) {
-    /* Return 1 when gyro/accel indicates inverted orientation */
-    return upside_down_detected;
+#if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
+static void Fill_DroneStatus(DroneStatus_t *out)
+{
+	uint32_t now;
+	uint32_t elapsed;
+
+	if (out == NULL) {
+		return;
+	}
+
+	now = HAL_GetTick();
+	out->mode = current_state;
+	out->charge = (laser_charge < 0) ? 0U :
+	              (laser_charge > 10) ? 10U : (uint8_t)laser_charge;
+	/* Armed = Battle with enough charge to fire (PR #3 hold-to-fire rule). */
+	out->armed = ((current_state == BATTLE_MODE) && (laser_charge >= 5)) ? 1U : 0U;
+	out->rescue_remaining_ms = 0U;
+
+	if (current_state == THE_LAST_OF_2028) {
+		elapsed = now - the_last_of_2028_entry_tick;
+		if (elapsed >= RESCUE_TIMEOUT_MS) {
+			out->rescue_remaining_ms = 0U;
+		} else {
+			out->rescue_remaining_ms = RESCUE_TIMEOUT_MS - elapsed;
+		}
+	}
 }
 
-/* CubeMX / board stubs — replace with generated init code */
-void SystemClock_Config(void) {
+static void Enhancements_Tick(void)
+{
+	DroneStatus_t st;
+	Fill_DroneStatus(&st);
+	Enhancements_Update(&st, HAL_GetTick());
 }
+#endif
 
-void MX_GPIO_Init(void) {
-}
+/* --- Threshold Warning Logging Function --- */
+void Check_And_Log_Thresholds(float t, float p, float h, float a[3], float g[3], float m[3])
+{
+	if (t > THRESHOLD_T) {
+		printf("T:%.2f C, exceeds threshold of %.2f C.\r\n", t, THRESHOLD_T);
+	}
+	if (p < THRESHOLD_P) {
+		printf("P:%.2f hPa, drops below threshold of %.2f hPa.\r\n", p, THRESHOLD_P);
+	}
+	if (h < THRESHOLD_H) {
+		printf("H:%.2f %%, drops below threshold of %.2f %%.\r\n", h, THRESHOLD_H);
+	}
+	if (a[0] > THRESHOLD_A) { printf("Accel X:%.2f m/s^2, exceeds threshold of %.2f m/s^2.\r\n", a[0], THRESHOLD_A); }
+	if (a[1] > THRESHOLD_A) { printf("Accel Y:%.2f m/s^2, exceeds threshold of %.2f m/s^2.\r\n", a[1], THRESHOLD_A); }
+	if (a[2] > THRESHOLD_A) { printf("Accel Z:%.2f m/s^2, exceeds threshold of %.2f m/s^2.\r\n", a[2], THRESHOLD_A); }
 
-void MX_UART_Init(void) {
+	if (g[0] > THRESHOLD_G) { printf("Gyro X:%.2f dps, exceeds threshold of %.2f dps.\r\n", g[0], THRESHOLD_G); }
+	if (g[1] > THRESHOLD_G) { printf("Gyro Y:%.2f dps, exceeds threshold of %.2f dps.\r\n", g[1], THRESHOLD_G); }
+	if (g[2] > THRESHOLD_G) { printf("Gyro Z:%.2f dps, exceeds threshold of %.2f dps.\r\n", g[2], THRESHOLD_G); }
+
+	if (m[0] > THRESHOLD_M) { printf("Magneto X:%.2f mgauss, exceeds threshold of %.2f mgauss.\r\n", m[0], THRESHOLD_M); }
+	if (m[1] > THRESHOLD_M) { printf("Magneto Y:%.2f mgauss, exceeds threshold of %.2f mgauss.\r\n", m[1], THRESHOLD_M); }
+	if (m[2] > THRESHOLD_M) { printf("Magneto Z:%.2f mgauss, exceeds threshold of %.2f mgauss.\r\n", m[2], THRESHOLD_M); }
 }

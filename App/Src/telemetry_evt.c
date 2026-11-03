@@ -1,0 +1,108 @@
+/**
+ * @file telemetry_evt.c
+ * @brief EVT / sensor line emitters for USART Virtual COM + VESPER.
+ */
+#include "telemetry_evt.h"
+
+#include <stdio.h>
+#include <string.h>
+
+#ifndef TELEMETRY_LINE_MAX
+#define TELEMETRY_LINE_MAX 256
+#endif
+
+/**
+ * Default transport: printf (semihosting or libc retarget).
+ * When MX_UART_Init / huart1 exist, provide a strong Telemetry_WriteLine that
+ * HAL_UART_Transmit()'s the buffer + "\r\n" to the ST-LINK VCP.
+ */
+__attribute__((weak)) void Telemetry_WriteLine(const char *line)
+{
+	if (line == NULL) {
+		return;
+	}
+	printf("%s\r\n", line);
+}
+
+void Telemetry_SendSensors(float t_c, float p_hpa, float h_pct,
+                           const float accel_mps2[3],
+                           const float gyro_dps[3],
+                           const float magneto_mgauss[3])
+{
+	char buf[TELEMETRY_LINE_MAX];
+
+	(void)snprintf(buf, sizeof(buf),
+		"Telemetry -> T:%.1f °C, P:%.1f hPa, H:%.1f %% | "
+		"Accel:[%.1f, %.1f, %.1f] m/s^2 | "
+		"Gyro:[%.1f, %.1f, %.1f] dps | "
+		"Magneto:[%.1f, %.1f, %.1f] mgauss",
+		(double)t_c, (double)p_hpa, (double)h_pct,
+		(double)accel_mps2[0], (double)accel_mps2[1], (double)accel_mps2[2],
+		(double)gyro_dps[0], (double)gyro_dps[1], (double)gyro_dps[2],
+		(double)magneto_mgauss[0], (double)magneto_mgauss[1], (double)magneto_mgauss[2]);
+	Telemetry_WriteLine(buf);
+}
+
+void Telemetry_EvtMode(const char *mode_tag)
+{
+	char buf[TELEMETRY_LINE_MAX];
+	(void)snprintf(buf, sizeof(buf), "EVT MODE=%s",
+		mode_tag != NULL ? mode_tag : EVT_MODE_STANDBY);
+	Telemetry_WriteLine(buf);
+}
+
+void Telemetry_EvtCharge(uint8_t charge_tenths)
+{
+	char buf[64];
+	if (charge_tenths > 10U) {
+		charge_tenths = 10U;
+	}
+	(void)snprintf(buf, sizeof(buf), "EVT CHARGE=%u/10", (unsigned)charge_tenths);
+	Telemetry_WriteLine(buf);
+}
+
+void Telemetry_EvtFire(uint8_t charge_after_shot)
+{
+	char buf[64];
+	if (charge_after_shot > 10U) {
+		charge_after_shot = 10U;
+	}
+	(void)snprintf(buf, sizeof(buf), "EVT FIRE charge=%u/10", (unsigned)charge_after_shot);
+	Telemetry_WriteLine(buf);
+}
+
+void Telemetry_EvtCountdown(uint32_t remaining_ms)
+{
+	char buf[64];
+	(void)snprintf(buf, sizeof(buf), "EVT COUNTDOWN remaining_ms=%lu",
+		(unsigned long)remaining_ms);
+	Telemetry_WriteLine(buf);
+}
+
+void Telemetry_EvtSelfDestruct(const char *reason_token)
+{
+	char buf[96];
+	(void)snprintf(buf, sizeof(buf), "EVT SELF_DESTRUCT reason=%s",
+		reason_token != NULL ? reason_token : EVT_REASON_TIMEOUT);
+	Telemetry_WriteLine(buf);
+}
+
+void Telemetry_EvtTerminate(void)
+{
+	Telemetry_WriteLine("EVT TERMINATE");
+}
+
+void Telemetry_EvtThresholdOk(void)
+{
+	Telemetry_WriteLine("EVT THRESHOLD_OK");
+}
+
+void Telemetry_EvtRescue(void)
+{
+	Telemetry_WriteLine("EVT RESCUE");
+}
+
+void Telemetry_EvtAttack(void)
+{
+	Telemetry_WriteLine("EVT ATTACK");
+}

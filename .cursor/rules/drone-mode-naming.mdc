@@ -1,30 +1,37 @@
 ---
-description: Correct drone mode enum naming — LAST_OF_2028, never TEST_OF_*
+description: Correct drone mode naming — THE_LAST_OF_2028 enum; display banner THE LAST OF EE2028
 alwaysApply: true
 ---
 
 # Drone mode naming
 
-The third drone state is **`LAST_OF_2028`**, not any `TEST_OF_*` variant.
+The third drone state enum is **`THE_LAST_OF_2028`**, not `LAST_OF_2028` and not any `TEST_OF_*` variant.
+User-facing matrix / scroll text is **`THE LAST OF EE2028`** (with the leading `THE`).
 
 ## Required names
 
 | Kind | Correct | Forbidden |
 |------|---------|-----------|
-| Enum / state | `LAST_OF_2028` | `TEST_OF_2028`, `TEST_OF_EE2028`, `TEST_OF_EE_2028` |
-| Handler | `Handle_Last_Of_2028_Mode` | `Handle_EE2028_Mode`, `Handle_Test_Of_*` |
-| Prose / docs | "Last of 2028" | "Test of EE2028", "Test of 2028" |
+| Enum / state | `THE_LAST_OF_2028` | `LAST_OF_2028`, `TEST_OF_2028`, `TEST_OF_EE2028`, `TEST_OF_EE_2028`, `THE_LAST_OF_EE2028` |
+| Handler | `Handle_The_Last_Of_2028_Mode` | `Handle_Last_Of_2028_Mode`, `Handle_EE2028_Mode`, `Handle_Test_Of_*` |
+| Event (if used) | `DRONE_EVENT_ENTER_THE_LAST_OF_2028` | `DRONE_EVENT_ENTER_LAST_OF_2028` |
+| Matrix / display banner | `THE LAST OF EE2028` | `LAST OF EE2028`, `LAST OF 2028`, `TEST OF EE2028` |
+| Prose / docs | "The Last of EE2028" | "Last of 2028", "Test of EE2028", "Test of 2028" |
 
 ## Examples
 
 ```c
 // ❌ BAD
+case LAST_OF_2028:
 case TEST_OF_EE2028:
-    Handle_EE2028_Mode();
+case THE_LAST_OF_EE2028:
+    Handle_Last_Of_2028_Mode();
+static const char kLastText[] = "LAST OF EE2028";
 
 // ✅ GOOD
-case LAST_OF_2028:
-    Handle_Last_Of_2028_Mode();
+case THE_LAST_OF_2028:
+    Handle_The_Last_Of_2028_Mode();
+static const char kLastText[] = "THE LAST OF EE2028";
 ```
 
 If you see a forbidden name in a diff or existing file, rename it to the correct form before finishing the task.
