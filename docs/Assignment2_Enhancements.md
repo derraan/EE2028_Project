@@ -1,6 +1,8 @@
 # Assignment 2 — Enhancements
 
-High-impact extras for the spaceship drone, biased toward **hardware we already own** first, then stretch builds. Basics (T/P/H/A/G/M, three modes, PB, UART) stay in firmware; this file is only for beyond-basic ideas.
+High-impact extras for the spaceship drone, biased toward **hardware we already own** first, then stretch builds. Basics (T/P/H/A/G/M, three modes, PB, UART) stay in firmware; this file tracks beyond-basic ideas and **as-built status**.
+
+**As-built (merged):** enhancements #1–#4 are largely implemented under `App/` + `Command/`, gated by `-DEE_ENHANCEMENTS=1` for hardware effects. Stretch #5–#7 remain aspirational.
 
 **Button-only input enhancement** (dual-edge EXTI, GPIO duration windows, debounce, mode/laser/rescue gesture map): see [`Button_Input_Enhancement.md`](Button_Input_Enhancement.md). That doc is scoped to the USER button only — not matrix/IR/buzzer.
 
@@ -20,15 +22,15 @@ High-impact extras for the spaceship drone, biased toward **hardware we already 
 
 ## Recommended enhancements (build these first)
 
-### 1. Matrix overall status display
+### 1. Matrix overall status display — **implemented**
 | | |
 |--|--|
 | **What** | One 8×8 display presents every main feature: charge state, armed state, radar azimuth, mode changes and self-destruct countdown |
 | **Charging** | Fill a 0–8 column progress bar. Once fully charged / armed, flash the full matrix until fired |
-| **Radar** | Draw a moving vertical line whose horizontal position represents target azimuth from left to right |
+| **Radar** | Draw a moving vertical line whose horizontal position represents target azimuth from left to right (API + harness; live adapter does not feed azimuth yet) |
 | **Mode text** | Scroll `BATTLE MODE` once when Battle begins. Scroll `THE LAST OF EE2028` repeatedly for the whole THE_LAST_OF_2028 mode |
-| **Countdown** | During the final 10 seconds, show `9` through `0` (or a shrinking bar). At `0`, display an explosion frame and then blank the matrix |
-| **Hooks** | A single non-blocking display controller selects the highest-priority screen and redraws from `HAL_GetTick()` |
+| **Countdown** | Live path: one 10 s drone clock via `rescue_remaining_ms` / `StatusDisplay_SetRescueRemainingMs`. Harness may still use a longer standalone sequence. At `0`, explosion frame then blank |
+| **Hooks** | `status_display` + `Enhancements_Update` from `DroneStatus_t` snapshots |
 | **Effort** | Medium (HT16K33 I2C, scrolling text/font, bitmaps and display arbitration) |
 
 #### Display priority
@@ -44,31 +46,32 @@ Only one image fits on an 8×8 matrix, so use this priority:
 
 Mode text temporarily interrupts the normal screen. Radar tracking resumes after `BATTLE MODE` finishes scrolling. In THE_LAST_OF_2028, the repeating warning and countdown override radar and charging.
 
-### 2. IR threat / “zombie” detect
+### 2. IR threat / “zombie” detect — **as shipped (observe-only)**
 | | |
 |--|--|
-| **What** | Object/hand over IR → UART warning + chirp; Standby→Battle, or auto-fire if charged |
-| **Why** | Interactive; good stand-in until mmWave is ready |
-| **Hooks** | Flag in `Read_Sensors()`; debounce + check IR polarity |
+| **What (shipped)** | Object/hand over IR → UART warning + buzzer chirp only |
+| **What (stretch, not wired)** | Standby→Battle, or auto-fire if charged — explicitly out of scope for the frozen adapter |
+| **Why** | Interactive cue; good stand-in until mmWave is ready |
+| **Hooks** | `IR_Threat_Poll` inside `Enhancements_Update`; D3/PB0 active-LOW |
 | **Effort** | Low–medium |
 
-### 3. Richer THE_LAST_OF_2028 / capacitor explode
+### 3. Richer THE_LAST_OF_2028 / capacitor explode — **implemented**
 | | |
 |--|--|
 | **What** | Start a 10-second countdown on entry. Scroll `THE LAST OF EE2028` repeatedly, accelerate the buzzer beeps as `0` approaches, then show the explosion at `0` |
 | **At zero** | Set `CAP_EXPLODE_Pin` **HIGH** to activate a relay-controlled safe effect; send sacrifice + `Cheerio!`, show the explosion frame, sound the final buzzer burst, blank the matrix and stop normal telemetry |
-| **Rescue** | A valid double-press before `0` cancels the countdown, keeps `CAP_EXPLODE_Pin` LOW and returns to Battle Mode |
-| **Hooks** | Non-blocking countdown and beep interval inside `Handle_The_Last_Of_EE2028_Mode()` using `HAL_GetTick()`; GPIO defaults LOW and changes HIGH only at `0` |
+| **Rescue** | A valid upright double-press before `0` cancels the countdown, keeps `CAP_EXPLODE_Pin` LOW and returns to Battle Mode |
+| **Hooks** | Baseline: `Enter_The_Last_Of_2028()` + inline `case THE_LAST_OF_2028` in `main.c`. Effects: `Enhancements_Update` / `DRONE_EVENT_SELF_DESTRUCT_STARTED`. GPIO defaults LOW |
 | **Effort** | Low–medium |
 
 The GPIO drives the relay module's control input, not a relay coil directly. The relay must switch only a safe, instructor-approved low-voltage simulation load. Do not rupture, short or overcharge a physical capacitor.
 
-### 4. Simple Command Center (UART)
+### 4. Simple Command Center (UART) — **implemented (VESPER)**
 | | |
 |--|--|
-| **What** | Clear serial lines or a tiny host script: mode, sensors, charge, events (threat / fire / explode) |
+| **What** | Local web dashboard: mode, sensors, charge, events (fire / countdown / terminate); fixture replay + Web Serial |
 | **Why** | Markers see state even if they miss the matrix; pairs with HUD |
-| **Hooks** | `Send_Telemetry()` + event prints (not a full web app) |
+| **Hooks** | `telemetry_evt.*` + [`Command/`](../Command/README.md); contract in [`Telemetry_EVT_Contract.md`](Telemetry_EVT_Contract.md) |
 | **Effort** | Low if text-only; medium if a small dashboard UI |
 
 ---
@@ -129,10 +132,10 @@ The GPIO drives the relay module's control input, not a relay coil directly. The
 ## Demo flow
 
 **Core (#1–#4):**  
-1. Standby — matrix idle; UART heartbeat  
-2. IR wave → threat + chirp → Battle  
+1. Standby — matrix idle; UART heartbeat / VESPER fixture or Web Serial  
+2. IR wave → threat chirp + log (no mode change); double-press or T/A/G → Battle  
 3. Matrix scrolls `BATTLE MODE` once, then returns to the active status screen
-4. PB charge → bar fills → armed matrix flashes → fire
+4. PB charge → bar fills → armed matrix flashes → **hold-to-fire**
 5. Flip → matrix repeatedly scrolls `THE LAST OF EE2028`; 10-second countdown begins
 6. Rescue before `0`, or hear accelerating beeps → explosion frame at `0` → silence
 
@@ -208,10 +211,10 @@ If #1–#4 are stable by **Day 9**, use the remaining development time for Wi‑
 
 ## Checklist
 
-- [ ] I2C bus / address for matrix  
-- [ ] IR pin + active level  
-- [ ] Buzzer type (active vs passive)  
-- [ ] Ship **#1–#4**  
+- [x] I2C bus / address for matrix (injectable; live needs `EE_MATRIX_I2C`)  
+- [x] IR pin + active level (D3/PB0 active-LOW)  
+- [x] Buzzer type (active ON/OFF on D2/PD14)  
+- [x] Ship **#1–#4** (source + adapter + VESPER; on-board verify pending Cube)  
 - [ ] Then **#5** mmWave + pan-tilt servos (if parts available)  
 - [ ] Then **#6** Wi‑Fi / BLE telemetry  
 - [ ] **#7** UAV last — only after the above are demo-stable  

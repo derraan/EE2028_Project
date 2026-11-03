@@ -328,13 +328,21 @@ Mode enum name remains **`THE_LAST_OF_2028`** (not any `TEST_OF_*` variant).
 
 Banner string is **`THE LAST OF EE2028`** (not `LAST OF EE2028` / `LAST OF 2028`).
 
-On `StatusDisplay_EnterLastOf2028()`:
+### Live drone path (one 10 s clock)
+
+`Enhancements_Update` feeds `StatusDisplay_SetRescueRemainingMs(rescue_remaining_ms)` from the baseline `RESCUE_TIMEOUT_MS` (10 s). There is **no** second ~21 s display timer in live mode: banner + countdown share the drone’s remaining rescue time. Explosion is triggered via `StatusDisplay_TriggerExplosion` / adapter on self-destruct — not by a separate matrix wall-clock.
+
+Entry helper in firmware is `Enter_The_Last_Of_2028()` in `main.c` (inline `case THE_LAST_OF_2028`); the adapter calls `StatusDisplay_EnterLastOf2028` when the status snapshot first shows that mode.
+
+### Standalone harness path (~21 s)
+
+On bare `StatusDisplay_EnterLastOf2028()` without an external remaining-ms feed (UART test keys):
 
 1. **0–10 s** — repeating scrolling banner only (`countdown_on = 0`), stepped at `STATUS_LAST_SCROLL_MS` (50 ms/column)
 2. **10–21 s** — digit countdown `10→0` (`countdown_on = 1`), LEDs flash on/off; half-period shortens as the value falls
 3. **then** — explosion → blank / terminated
 
-Constants:
+Constants (harness defaults):
 
 - `STATUS_LAST_BANNER_MS = 10000`
 - `STATUS_COUNTDOWN_MS = 11000` (digits 10..0 inclusive, 1 s each)
@@ -344,7 +352,7 @@ Constants:
 
 Flash half-period: `40 + countdown_val * 45` ms → ~490 ms at `10`, ~40 ms at `0`. Digit `10` is drawn as packed `1`+`0` (3+5 columns).
 
-Rescue (`z`) cancels last/countdown/explosion and re-enters battle scroll.
+Rescue (`z` in harness, or upright double-press in live mode) cancels last/countdown/explosion and re-enters battle scroll.
 
 ## 3.6 Animation timings (tuned)
 
@@ -411,4 +419,5 @@ Auto sequence (`s`): charge ramp → armed → battle → radar sweep → last (
 - Enhancement modules stay out of friend’s CubeMX-owned files where possible; sync copies into the lab Core tree for bring-up.
 - Display failures must not block mandatory drone logic once integrated.
 - Frame buffer stays HAL-independent (`uint8_t[8]`) so PC-side unit tests remain possible.
-- Naming: third drone mode is **`THE_LAST_OF_2028`** / `Handle_The_Last_Of_2028_Mode` / “The Last of EE2028” in prose; matrix banner text is `THE LAST OF EE2028`.
+- Naming: third drone mode is **`THE_LAST_OF_2028`**; live entry is `Enter_The_Last_Of_2028()` / adapter `StatusDisplay_EnterLastOf2028`; prose “The Last of EE2028”; matrix banner text is `THE LAST OF EE2028`.
+- Live consumer: `App/Src/enhancements.c` (`Enhancements_Update` / `OnEvent`).

@@ -59,15 +59,23 @@ Cheerio!
 
 ---
 
-## 3) Mode naming note
+## 3) Mode naming (settled)
 
 | Layer | Tag |
 |-------|-----|
-| Firmware enum (integration) | `LAST_OF_2028` |
+| Firmware enum (`DroneState_t`) | `THE_LAST_OF_2028` |
 | **EVT `MODE=` value (emit this)** | `THE_LAST_OF_2028` |
-| PR #3 human printf today | `THE LAST OF EE2028` / enum `THE_LAST_OF_EE2028` |
+| Matrix banner / human printf | `THE LAST OF EE2028` |
 
-Until the adapter sibling settles gameplay naming, VESPER accepts both `THE_LAST_OF_2028` and legacy `THE_LAST_OF_EE2028` / prose containing `LAST OF` as Last-of-2028. **New firmware EVT emitters use `THE_LAST_OF_2028`.**
+VESPER’s parser also accepts **legacy aliases** for old logs only: `THE_LAST_OF_EE2028`, `LAST_OF_2028`, `TEST_OF_2028`, and prose containing `LAST OF`. New firmware must emit `THE_LAST_OF_2028` only.
+
+### Live emitters vs harness-only tags
+
+Wired from `main.c` today: `MODE`, `CHARGE`, `FIRE`, `COUNTDOWN`, `ATTACK`, `RESCUE`, `SELF_DESTRUCT`, `TERMINATE`.
+
+Implemented helpers but **not** called from live `main.c` yet: `Telemetry_SendSensors`, `Telemetry_EvtThresholdOk` (sensors still use PR #3 `printf` lines).
+
+Harness / optional only (not live adapter): `EVT IR=…`, `EVT CAP_EXPLODE=…`, `EVT THREAT=…`. Live IR is prose + chirp; live relay is GPIO via `Enhancements_OnEvent(DRONE_EVENT_SELF_DESTRUCT_STARTED, …)`.
 
 ---
 
@@ -85,4 +93,4 @@ Until the adapter sibling settles gameplay naming, VESPER accepts both `THE_LAST
 
 ## 5) What this work does **not** own
 
-Matrix / buzzer / IR / relay adapter wiring (sibling Integration Adapter plan). Drone gameplay rules stay in the baseline state machine.
+Matrix / buzzer / IR / relay hardware timing (see `enhancements.*` and module design docs). Drone gameplay rules stay in the baseline state machine (`Core/Src/main.c`).

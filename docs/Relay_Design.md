@@ -131,9 +131,18 @@ Automatic hooks:
 
 ## Integration notes
 
+### Live adapter
+
+- `main.c` calls `Enhancements_OnEvent(DRONE_EVENT_SELF_DESTRUCT_STARTED, …)` inside `Enter_Self_Destruct()`.
+- Adapter → `Relay_Trigger` (defaults LOW at init; HIGH only on that event).
+- `Enhancements_FinalEffectsDone` gates the permanent halt until explosion / final burst / relay pulse finish; `Enhancements_Shutdown` forces quiet / relay LOW.
+- Compile with `-DEE_ENHANCEMENTS=1`. Pin: D4 / PA3 via `enhancements_hw.c`.
+
+### Test harness
+
 - `StatusDisplay_Test_Update()` key routing order: **relay** → IR → buzzer (single UART owner).
 - `Relay_Test_Update(now_ms)` runs once per loop tick (needed only if `pulse_ms > 0`).
-- Mandatory THE_LAST_OF_2028 termination in `main.c` should call the same Trigger/Reset contract **after** Checkpoint B; do not merge into CubeMX-owned files early.
+- Harness may print `EVT CAP_EXPLODE=` — harness-only; live path is GPIO via the adapter.
 - Pair with matrix explosion frame + buzzer `FINAL_BURST` for the full demo effect.
 
 ## Lab sync (CubeIDE project)
@@ -156,6 +165,7 @@ Build/flash in CubeIDE; serial: `.\scripts\serial_monitor.ps1` (COM6 @ 115200).
 - [x] One-shot fire guard; latched HIGH (`pulse_ms=0`) with optional pulse path
 - [x] UART keys (`e` / `E`) and `EVT CAP_EXPLODE=` lines
 - [x] Status-display explosion edge + rescue/reset wiring
-- [ ] Bench with LED (or relay module input) on D4 / PA3
+- [x] Live adapter Trigger on `DRONE_EVENT_SELF_DESTRUCT_STARTED`
+- [ ] Bench with LED (or relay module input) on D4 / PA3 on the linked Cube project
 - [ ] Confirm no HIGH glitch across power-cycle / reset
-- [ ] Bind only after mandatory termination behavior passes
+- [ ] On-board verify with mandatory termination + enhancements enabled

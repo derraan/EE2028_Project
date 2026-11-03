@@ -7,7 +7,7 @@ Hardware capture cannot run until USART retarget + board flash are available. Un
 1. Flash firmware with `Telemetry_WriteLine` → USART1 (ST-LINK VCP) @ **115200 8N1**.
 2. **Disconnect the debugger session** if it monopolizes the COM port / semihosting.
 3. Open a serial terminal (Tera Term / PuTTY) on the ST-LINK Virtual COM port.
-4. Fly a mission covering: Standby telemetry → Battle → charge → fire → Last of 2028 → countdown → rescue **or** timeout / early self-destruct → `EVT TERMINATE` → `Cheerio!`.
+4. Fly a mission covering: Standby telemetry → Battle → charge → hold-to-fire → **The Last of EE2028** → countdown → rescue **or** timeout / early self-destruct → `EVT TERMINATE` → `Cheerio!`.
 5. Save the raw log as:
 
 ```text
@@ -21,6 +21,27 @@ npx --yes serve Command
 # browser → Replay fixture (or point main.js at the new file)
 node scripts/test_uart_parser.mjs
 ```
+
+## Expected EVT checklist
+
+A good capture should include most of:
+
+```text
+EVT MODE=STANDBY_MODE
+EVT MODE=BATTLE_MODE
+EVT CHARGE=n/10
+EVT FIRE charge=n/10
+EVT MODE=THE_LAST_OF_2028
+EVT ATTACK
+EVT COUNTDOWN remaining_ms=N
+EVT RESCUE                  # if rescued
+# — or —
+EVT SELF_DESTRUCT reason=timeout|rescue_limit|early
+EVT TERMINATE
+Cheerio!
+```
+
+Canonical enum / EVT tag is `THE_LAST_OF_2028`; human banner / printf prose is `THE LAST OF EE2028`. See [docs/Telemetry_EVT_Contract.md](../docs/Telemetry_EVT_Contract.md).
 
 ## Design note
 

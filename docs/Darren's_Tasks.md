@@ -2,9 +2,9 @@
 
 ## Can this be done in parallel?
 
-**Yes, with boundaries.** The basic firmware is not ready, so enhancement code should initially run against mocks and small hardware tests. Do not build enhancements directly into the current `main.c`; that would create avoidable merge conflicts with the CubeMX project and state-machine work.
+**Yes — and the parallel modules are now merged.** PR #3 baseline + Darren’s `App/` adapter landed on `main` behind `-DEE_ENHANCEMENTS`. Remaining shared work is CubeIDE/BSP link and on-board verify, not green-field driver authorship.
 
-Your friend owns the mandatory baseline described in `Next_Steps.md`. Darren owns self-contained enhancement drivers, display flows and integration adapters. Enhancements are merged only after the mandatory acceptance gate passes.
+Historical note: early work ran against mocks and module harnesses so it would not fight CubeMX generation. Do not rewrite live hooks into competing copies of `main.c`; keep using the thin `Enhancements_*` / `Telemetry_*` call sites already present.
 
 ---
 
@@ -50,33 +50,29 @@ Your friend owns the mandatory baseline described in `Next_Steps.md`. Darren own
 
 ---
 
-## Define the integration contract first
+## Integration contract (as-built)
 
-Write enhancement modules against an application-facing interface, not directly against your friend's globals.
-
-Suggested events:
+Live code uses [`App/Inc/enhancements.h`](../App/Inc/enhancements.h). Mode transitions are **inferred from `DroneStatus_t` snapshots**; only one-shots that cannot be inferred use `OnEvent`.
 
 ```c
 typedef enum {
-    DRONE_EVENT_NONE,
-    DRONE_EVENT_ENTER_STANDBY,
-    DRONE_EVENT_ENTER_BATTLE,
-    DRONE_EVENT_ENTER_THE_LAST_OF_2028,
-    DRONE_EVENT_CHARGE_CHANGED,
+    DRONE_EVENT_NONE = 0,
     DRONE_EVENT_LASER_FIRED,
-    DRONE_EVENT_RADAR_AZIMUTH,
-    DRONE_EVENT_COUNTDOWN_TICK,
-    DRONE_EVENT_RESCUED,
-    DRONE_EVENT_TERMINATED
+    DRONE_EVENT_SELF_DESTRUCT_STARTED
 } DroneEvent_t;
-```
 
-Suggested enhancement update API:
+typedef struct {
+    DroneState_t mode;
+    uint8_t charge;               /* 0..10 */
+    uint8_t armed;                /* 1 when Battle and charge >= 5 */
+    uint32_t rescue_remaining_ms; /* drone clock; 0 outside Last */
+} DroneStatus_t;
 
-```c
-void Enhancements_Init(void);
-void Enhancements_OnEvent(DroneEvent_t event, int32_t value);
-void Enhancements_Update(uint32_t now_ms);
+void Enhancements_Init(const Enhancements_Config_t *cfg);
+void Enhancements_OnEvent(DroneEvent_t event, uint32_t now_ms);
+void Enhancements_Update(const DroneStatus_t *status, uint32_t now_ms);
+uint8_t Enhancements_FinalEffectsDone(uint32_t now_ms);
+void Enhancements_Shutdown(void);
 ```
 
 Rules:
@@ -84,10 +80,8 @@ Rules:
 - `Enhancements_OnEvent()` records requested changes and returns quickly.
 - `Enhancements_Update()` advances animations and sounds without blocking.
 - Enhancement failures must never prevent mandatory mode logic, PB rescue or UART.
-- Hardware-specific HAL calls stay inside individual drivers.
-- During early development, replace HAL calls with mocks or callbacks.
-
-Confirm this contract with your friend before either side writes integration code.
+- Hardware-specific HAL calls stay inside individual drivers / `enhancements_hw.c`.
+- Compile with `-DEE_ENHANCEMENTS=1` (add `-DEE_BENCH=1` for the UART bench).
 
 ---
 
@@ -322,23 +316,25 @@ This is the safest way to progress while the STM32 baseline is unfinished.
 
 Deliverable: repeatable expected output independent of CubeIDE and hardware.
 
-## Task 8 — Command Center web dashboard (proposed design)
+## Task 8 — Command Center web dashboard ✅ mostly done
 
 Maps to enhancement **#4** (UART Command Center) and stretch **#6** (Wi‑Fi / BLE) in `Assignment2_Enhancements.md`. The matrix is the **on-drone HUD**; this is the **PC mission-control view**.
 
-**Delivery shape:** a **web dashboard**, not a standalone desktop app. Design starts from the imported HTML mockup, then wires live EE2028 data into its panels. Mandatory UART telemetry must keep working; wireless is an add-on, never a replacement.
+**Delivery shape:** a **web dashboard**, not a standalone desktop app. Fixture replay and Web Serial are implemented under `Command/src/`. Mandatory UART telemetry must keep working; wireless is an add-on, never a replacement.
 
-Full design notes: `[docs/Command_Center_Design.md](Command_Center_Design.md)`.
+Full design notes: [`docs/Command_Center_Design.md`](Command_Center_Design.md). Quick start: [`Command/README.md`](../Command/README.md).
 
-### Mockup imported
+### As-built
 
 
 | Item        | Location                                                                          |
 | ----------- | --------------------------------------------------------------------------------- |
-| HTML mockup | `Command/index.html`                                                              |
+| HTML shell  | `Command/index.html`                                                              |
+| JS modules  | `Command/src/` — bindings, parser, serial, replay, state, main                    |
+| Fixtures    | `Command/fixtures/*.log`                                                          |
 | Branding    | VESPER / Expedition control (fictional UI theme)                                  |
 | Views       | `01 Navigation` · `02 Drone systems` · `03 Captain view`                          |
-| Status      | Static interactive prototype; fiction telemetry only — **not yet wired** to STM32 |
+| Status      | Fixture + Web Serial wired; live board stream pending Cube USART retarget         |
 
 
 Open locally by serving the folder (recommended) or opening the file in a browser:
@@ -358,10 +354,10 @@ Show mode, sensors, charge, threats and critical events so markers can follow th
 | Stage        | What                                                          |
 | ------------ | ------------------------------------------------------------- |
 | Design       | ✅ HTML mockup lives in `Command/`                             |
-| Annotate     | Add `data-cc-*` hooks on existing nodes (keep VESPER styling) |
-| Wire         | Bind those nodes to a shared JS state model                   |
-| Local deploy | Serve `Command/` from a tiny static server + optional bridge  |
-| Live data    | UART (or later Wi‑Fi) → parser → WebSocket / SSE → page       |
+| Annotate     | ✅ `data-cc-*` hooks on existing nodes                         |
+| Wire         | ✅ Shared JS state model + parser                              |
+| Local deploy | ✅ Serve `Command/`; Web Serial preferred; bridge stub optional |
+| Live data    | ⏳ Board USART → Web Serial (or later Wi‑Fi) → same parser     |
 | Demo         | Browser on the lab PC; Tera Term for raw line debug only      |
 
 
@@ -467,13 +463,14 @@ Tasks:
 - [ ] Agree message tags with friend (do not break compulsory formats).
 - [ ] Add `data-cc-*` hooks to the existing VESPER nodes listed above.
 - [ ] Split interactive prototype JS from live-binding JS (`Command/src/`).
-- [ ] Implement JS state model + fixture/mock feeder.
-- [ ] Rebuild `#devices` cards for real `T P H A G M` (or bind dedicated spans).
-- [ ] Map energy core UI to laser charge / armed / fire events.
-- [ ] Map `#events` + `#warningText` to attack / IR / countdown / terminate.
-- [ ] Implement UART bridge (115200 8N1) → WebSocket/SSE → page.
-- [ ] Support offline replay for demo without the board.
+- [x] Implement JS state model + fixture/mock feeder.
+- [x] Rebuild `#devices` cards for real `T P H A G M` (or bind dedicated spans).
+- [x] Map energy core UI to laser charge / armed / fire events.
+- [x] Map `#events` + `#warningText` to attack / IR / countdown / terminate.
+- [x] Support offline replay for demo without the board (`Command/fixtures/`).
+- [x] Web Serial @ 115200 8N1 (preferred live path; optional Node bridge remains a stub).
 - [ ] Keep UART path working if Wi‑Fi/BLE is added later (same payload → same web UI).
+- [ ] Capture a real on-board mission log once USART retarget lands.
 
 ### Stretch: Wi‑Fi / BLE
 
@@ -481,22 +478,22 @@ Tasks:
 - Bridge transport switches; browser UI stays identical.
 - UART remains the fallback Command Center link.
 
-Deliverable: `Command/index.html` mockup wired into a **browser-deployed** Command Center that tracks a live or recorded EE2028 mission. See `docs/Command_Center_Design.md`.
+Deliverable: `Command/index.html` wired into a **browser** Command Center that tracks a live or recorded EE2028 mission. Fixture + Web Serial paths are done; live board stream waits on Cube USART. See `docs/Command_Center_Design.md`.
 
 ---
 
 ## Work that must wait
 
-Do not complete these until your friend's baseline provides stable interfaces:
+Only these remain blocked on Cube / hardware:
 
-- Binding modules to real `I2C_HandleTypeDef` / `TIM_HandleTypeDef`
-- Choosing final GPIO and timer channels
-- Editing the generated main loop or interrupt callback
-- Sharing I2C2 with the on-board sensors
-- Triggering enhancements from mandatory mode transitions
+- Binding the matrix to a real `I2C_HandleTypeDef` (`EE_MATRIX_I2C`) inside a Cube project
+- Flashing and verifying LED, PB EXTI, USART1 and I2C2 / BSP sensors on-board
+- Strong `Telemetry_WriteLine` retarget off semihosting `printf`
+- On-board regression of the mandatory acceptance checklist with enhancements on/off
 - Replacing mandatory UART with wireless telemetry
-- Connecting relay behavior to terminal shutdown
-- UAV integration
+- UAV integration / RD-03E Tasks 6–6a
+
+Already done in source (do not re-open as blockers): GPIO aliases D2/D3/D4, thin `main.c` hooks, mode-driven adapter updates, relay on self-destruct, VESPER fixtures + Web Serial UI.
 
 ---
 
@@ -504,13 +501,13 @@ Do not complete these until your friend's baseline provides stable interfaces:
 
 ### Checkpoint A — contract review
 
-- [ ] Agree on `DroneEvent_t`, event values and update API.
-- [ ] Agree on folder layout and naming.
-- [ ] Agree that the mandatory implementation never calls blocking enhancement functions.
+- [x] Agree on `DroneEvent_t`, event values and update API (as-built in `enhancements.h`).
+- [x] Agree on folder layout and naming (`App/`, `Command/`).
+- [x] Agree that the mandatory implementation never calls blocking enhancement functions.
 
 ### Checkpoint B — hardware baseline ready
 
-Your friend's branch must demonstrate:
+Still required on the linked Cube project:
 
 - [ ] LED, PB EXTI, USART1 and I2C2 working.
 - [ ] Six sensors reporting physical values.
@@ -519,6 +516,8 @@ Your friend's branch must demonstrate:
 
 ### Checkpoint C — bind one module at a time
 
+Source modules 1–5 and Command (8) are already integrated behind macros. On hardware, re-enable one path at a time if something fails:
+
 1. Matrix driver only
 2. Matrix status controller
 3. Buzzer
@@ -526,7 +525,7 @@ Your friend's branch must demonstrate:
 5. Relay simulation
 6. RD-03E ranging (Task 6a) before azimuth/servo stretch (Task 6)
 7. Radar/servos simulation (Task 6)
-8. Command Center web dashboard (HTML mockups + UART bridge)
+8. Command Center (fixtures + Web Serial; bridge optional)
 9. Wi-Fi/BLE into the same web UI (same payload)
 
 After each step, rerun the entire mandatory acceptance checklist. Revert or disable an enhancement if it breaks compulsory behavior.
@@ -535,29 +534,30 @@ After each step, rerun the entire mandatory acceptance checklist. Revert or disa
 
 ## Recommended order for Darren
 
-1. Agree on interfaces and branch ownership with your friend.
+1. ~~Agree on interfaces and branch ownership with your friend.~~ ✅
 2. ~~Implement HT16K33 matrix driver.~~ ✅
 3. ~~Implement pure bitmap/font/status-display logic (Task 2).~~ ✅
 4. ~~Implement non-blocking buzzer patterns (Task 3).~~ ✅
 5. ~~Implement IR hardware smoke tests in isolated test code (Task 4).~~ ✅
 6. ~~Implement relay / CAP_EXPLODE adapter on D4 (Task 5).~~ ✅
-7. RD-03E ranging parser + single-person registration prototype (**Task 6a — next**).
-8. Keep Task 6 azimuth/servo simulation as stretch (do not assume RD-03E XY).
-9. ~~Import Command Center HTML mockup.~~ ✅ (`Command/index.html`)
-10. Annotate `data-cc-*` hooks and draft UART/`EVT` tags with friend (**Task 8**).
-11. Wait for the mandatory baseline integration checkpoint.
-12. Merge and bind matrix first; add other enhancements one by one.
-13. Wire the `Command/` web bridge last (needs stable UART lines; mock/fixture mode can proceed earlier).
+7. ~~Import Command Center + wire `data-cc-*` / EVT parser (Task 8).~~ ✅
+8. ~~Merge adapter into baseline behind `EE_ENHANCEMENTS`.~~ ✅
+9. Link Cube project + on-board verify (next shared gate).
+10. RD-03E ranging parser + single-person registration prototype (**Task 6a**).
+11. Keep Task 6 azimuth/servo simulation as stretch (do not assume RD-03E XY).
+12. Optional Wi‑Fi/BLE into the same VESPER UI.
 
 ## Definition of done
 
-Darren's parallel work is ready to merge when:
+Darren's parallel work is merge-ready when:
 
 - It does not modify CubeMX-generated basic files.
 - Every module has a small, documented API.
 - No module calls `HAL_Delay()`.
-- Fake events can demonstrate every enhancement flow.
+- Fake events / fixtures can demonstrate every enhancement flow.
 - Missing hardware returns an error without blocking the main application.
 - The mandatory project can compile with enhancements disabled.
 - Integration can be performed one module at a time.
+
+**Source merge criteria above are met on `main`.** Remaining “done for demo” bar: Checkpoint B on hardware + live VESPER UART stream.
 

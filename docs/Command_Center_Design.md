@@ -2,13 +2,15 @@
 
 Web mission-control UI for EE2028 Assignment 2 enhancements **#4** (UART Command Center) and stretch **#6** (Wi‑Fi / BLE).
 
-**Status:** HTML mockup **imported**; live STM32 wiring **not started**.
+**Status:** Fixture replay + Web Serial UI **implemented** under `Command/src/`. Live board stream waits on Cube USART retarget (same parser). Optional Node bridge remains a stub — Web Serial is the preferred live path.
 
 Sources:
 
 1. [docs/Assignment2_Enhancements.md](Assignment2_Enhancements.md) — enhancement #4 / #6
 2. [docs/Darren's_Tasks.md](Darren's_Tasks.md) — Task 8
-3. As-built mockup: [Command/index.html](../Command/index.html)
+3. As-built UI: [Command/index.html](../Command/index.html) + [Command/src/](../Command/src/) + [Command/fixtures/](../Command/fixtures/)
+4. Wire contract: [Telemetry_EVT_Contract.md](Telemetry_EVT_Contract.md)
+5. Quick start: [Command/README.md](../Command/README.md)
 
 The 8×8 matrix remains the **on-drone HUD** ([LED_Matrix_Design.md](LED_Matrix_Design.md)). This document is the **PC browser dashboard**.
 
@@ -56,14 +58,16 @@ Mandatory UART telemetry must keep working. Wireless is an add-on, never a UART 
 
 ### Recommended implementation path
 
-Build in three layers that share one JS state model:
+Three layers share one JS state model (as-built):
 
-1. **UI** — `Command/index.html` (+ later `Command/src/`) served on localhost  
-2. **Parser / state** — turns UART/`EVT` lines into `{ mode, telemetry, charge, events… }`  
+1. **UI** — `Command/index.html` + `Command/src/bindings.js` served on localhost  
+2. **Parser / state** — `parser.js` / `state.js` turn UART/`EVT` lines into `{ mode, telemetry, charge, events… }`  
 3. **Transport**
-   - **Phase A (now):** fixture/mock replay (no board)  
-   - **Phase B (lab):** **Web Serial API** in Chrome/Edge → read COM port directly from the page  
-   - **Phase C (optional):** small `Command/bridge/` if Web Serial is blocked, or for Wi‑Fi/BLE fan-in  
+   - **Phase A (done):** fixture replay via `replay.js` + `Command/fixtures/*.log`  
+   - **Phase B (UI done; board pending):** **Web Serial API** in Chrome/Edge (`serial.js`)  
+   - **Phase C (optional stub):** `Command/bridge/` if Web Serial is blocked, or for Wi‑Fi/BLE fan-in  
+
+Parser also accepts legacy mode aliases (`THE_LAST_OF_EE2028`, `LAST_OF_2028`, `TEST_OF_2028`) and maps them to canonical `THE_LAST_OF_2028`.
 
 ```text
                     ┌─────────────────────────────┐
@@ -101,10 +105,16 @@ Build in three layers that share one JS state model:
 
 ```text
 Command/
-  index.html     # VESPER mockup (current interactive prototype)
-  src/           # TODO: state model + bindings (split out of inline script)
-  bridge/        # TODO: UART/Wi-Fi parser → WebSocket/SSE
-  fixtures/      # TODO: recorded mission logs for offline demo
+  index.html          # VESPER shell
+  src/
+    main.js           # boot + UI mode (fixture / serial)
+    bindings.js       # data-cc-* DOM updates
+    parser.js         # UART / fixture line parser
+    state.js          # shared mission state
+    serial.js         # Web Serial transport
+    replay.js         # fixture replay
+  fixtures/           # recorded / synthetic mission logs
+  bridge/README.md    # optional Node bridge stub (Web Serial preferred)
 ```
 
 Serve the UI:
@@ -342,10 +352,12 @@ Suggested browser state object:
 
 ## 13) Definition of done
 
-Task 8 is done when:
+Task 8 source work is done when:
 
-1. `Command/index.html` opens via a local static server.
-2. Mock/fixture mode exercises Standby → Battle → charge/fire → THE_LAST_OF_2028 → rescue/terminate.
-3. Live UART bridge updates the same bindings.
-4. Compulsory telemetry lines still make sense in a raw serial terminal.
-5. Docs in this file match the as-built bind hooks.
+1. `Command/index.html` opens via a local static server. ✅
+2. Fixture mode exercises Standby → Battle → charge/fire → THE_LAST_OF_2028 → rescue/terminate. ✅
+3. Web Serial (preferred) or optional bridge updates the same bindings. ✅ UI; ⏳ board USART
+4. Compulsory telemetry lines still make sense in a raw serial terminal. ✅ contract + fixtures
+5. Docs in this file match the as-built bind hooks. ✅ (this revision)
+
+**Demo-complete** additionally needs a flashed board with `Telemetry_WriteLine` on ST-LINK VCP and one captured `mission_uart_capture.log`.

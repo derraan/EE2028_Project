@@ -1,76 +1,181 @@
-# EE2028 Project — Integration (Adapter)
+# EE2028 Spaceship Drone
 
-PR #3 basic drone baseline plus a thin shared enhancements adapter (matrix, buzzer, IR, relay). Telemetry/VESPER is a separate plan and is not required for this milestone.
+Firmware and mission-control UI for Assignment 2 — *The Last of EE2028*.
 
-## Modes (PR #3 baseline — frozen gameplay)
+The Discovery board runs a three-mode drone state machine (sensors, laser charge/fire, rescue / self-destruct). Optional Grove hardware (LED matrix, buzzer, IR, relay) rides on a thin adapter. A local browser dashboard (**VESPER**) shows the same UART stream markers would read in Tera Term.
 
-| State | Description |
-|-------|-------------|
-| `STANDBY_MODE` | LED on; telemetry; double-press or T/A/G thresholds → Battle |
-| `BATTLE_MODE` | LED 1 Hz; **hold-to-fire** (≥500 ms, charge ≥5/10, −5 per shot); upside-down → The Last of EE2028 |
-| `THE_LAST_OF_2028` | LED 2 Hz; attack alerts; double-press rescue or self-destruct |
-| `SELF_DESTRUCT_*` | Noble sacrifice → `Cheerio!` → bounded final effects (if enhancements on) → permanent halt |
+**Board of record:** ST **B-L4S5I-IOT01A**.
 
-Frozen rules (do not “fix” from older checklist wording without a focused patch):
+---
 
-1. **Fire:** hold-to-fire full-auto in Battle (not automatic fire at 5/10).
-2. **Armed (display):** Battle and charge ≥ 5/10.
-3. **Battle entry:** double-press from Standby, or T/A/G threshold trip (PR #3).
-4. **Self-destruct:** 10 s without rescue **or** 5 failed upside-down rescues (whichever first).
-5. **IR:** detect + chirp + log only — no mode/fire authority.
+## What you can do today vs later
 
-Enum name is `THE_LAST_OF_2028`; matrix banner text remains `THE LAST OF EE2028`.
+| Without a Cube project | With Cube + board |
+|------------------------|-------------------|
+| Read this summary and the design docs | Flash baseline or enhanced firmware |
+| Replay a mission in VESPER from fixtures | Live UART / Web Serial into VESPER |
+| Run the offline UART parser smoke test | Wire Grove modules on D2/D3/D4 + matrix I2C |
 
-## Layout
+This git tree has application source (`Core/`, `App/`, `Command/`) but **does not** contain the STM32CubeIDE project, HAL, or BSP. You cannot build/flash from this checkout alone until those are linked. Details: [docs/Next_Steps.md](docs/Next_Steps.md).
 
-```
-Core/
-  Inc/drone.h          — shared DroneState_t
-  Src/main.c           — PR #3 state machine + thin EE hooks
-App/
-  Inc|Src/             — ht16k33, status_display, buzzer, ir_threat, relay_effect
-  Inc|Src/enhancements.*     — shared adapter (live + bench)
-  Inc|Src/enhancements_hw.*  — GPIO/I2C backends (D2/D3/D4)
-  Test/enhancements_bench.c  — UART bench feeding the same adapter
-  Test/*_test.c              — module-level harnesses (matrix/buzzer/IR/relay)
-docs/                  — design notes + button enhancement
+---
+
+## How a mission works
+
+```text
+STANDBY ──double-press or T/A/G──► BATTLE ──upside-down──► THE LAST OF EE2028
+   ▲                                  │                         │
+   └────────── double-press ──────────┘         rescue ─────────┤
+                                                                ▼
+                                              self-destruct → Cheerio! → halt
 ```
 
-## Build configurations
+1. **Standby** — status LED on; telemetry every second; ignore a single press.
+2. **Battle** — LED blinks 1 Hz. Single press adds **+3/10** charge (cap 10). **Hold** the button ≥500 ms with charge ≥5/10 to fire full-auto (−5 per shot). Double-press returns to Standby.
+3. **The Last of EE2028** — board flipped upside-down. LED blinks 2 Hz; attack lines at 1 Hz. Upright double-press **rescues** back to Battle. Otherwise self-destruct after **10 seconds** or **5 failed** upside-down rescues.
+4. **Self-destruct** — sacrifice message, `Cheerio!`, then permanent halt. With enhancements on, matrix / buzzer / relay play final effects first.
+
+**Naming:** code enum is `THE_LAST_OF_2028`; matrix and human banners say `THE LAST OF EE2028`.
+
+### Rules we treat as frozen
+
+Do not “fix” these from older checklist wording without a focused patch:
+
+- Fire is **hold-to-fire**, not auto-fire as soon as charge hits 5/10.
+- Armed (for the matrix) means Battle **and** charge ≥ 5/10.
+- Battle also opens on **T / A / G** threshold trips (PR #3 behaviour).
+- IR detects and chirps only — it does **not** change mode or fire the laser.
+
+---
+
+## What’s in the program
+
+### Mandatory baseline — `Core/`
+
+| Piece | Role |
+|-------|------|
+| Modes + LEDs | Standby / Battle / Last / self-destruct |
+| USER button | Dual-edge EXTI, debounce, single / double / hold |
+| Sensors | T, P, H, A, G, M (BSP paths for B-L4S5I-IOT01A) |
+| Laser energy | Charge in tenths; hold-to-fire |
+| UART lines | Human telemetry + `EVT …` machine tags |
+
+### Enhancements — `App/` (optional, `-DEE_ENHANCEMENTS=1`)
+
+| Module | Pin / bus | Behaviour |
+|--------|-----------|-----------|
+| 8×8 matrix HUD | I2C (`EE_MATRIX_I2C`; `NULL` skips safely) | Charge bar, armed flash, `BATTLE MODE` / `THE LAST OF EE2028`, countdown, explosion |
+| Buzzer | D2 = PD14 | Chirp, fire, countdown, final burst |
+| IR sensor | D3 = PB0 (active-LOW) | Detect → log + chirp |
+| Relay `CAP_EXPLODE` | D4 = PA3 | HIGH on self-destruct start (safe sim load only) |
+
+The shared adapter (`enhancements.c` / `enhancements_hw.c`) watches a `DroneStatus_t` snapshot each tick and handles two one-shot events: laser fired, self-destruct started. Live mode uses **one** 10 s rescue clock for matrix and buzzer.
+
+Module harnesses and a UART bench live under `App/Test/`.
+
+### VESPER Command Center — `Command/`
+
+Browser dashboard: mode, sensors, charge, countdown, event log. Same parser for **fixture replay** and **Web Serial** @ 115200 8N1.
+
+---
+
+## Bring-up guide
+
+### A. Try VESPER with no hardware (now)
+
+```bash
+# from repo root
+npx --yes serve Command
+```
+
+Open the URL (usually `http://localhost:3000`). Use **Replay fixture** or **Replay early SD** in the toolbar.
+
+Optional parser check:
+
+```bash
+node scripts/test_uart_parser.mjs
+```
+
+More UI detail: [Command/README.md](Command/README.md).
+
+### B. Link a CubeIDE project (required to flash)
+
+1. In STM32CubeIDE, create or open a **B-L4S5I-IOT01A** project; keep the `.ioc` in (or next to) this repo.
+2. Add `App/Inc` + `App/Src` (and `Core/` app files) to include paths and the build.
+3. Confirm USER button EXTI on **both edges**, USART1 @ **115200 8N1** (ST-LINK VCP), I2C2 for on-board sensors.
+4. Retarget `printf` / `Telemetry_WriteLine` to USART1 so Tera Term and VESPER see the same stream.
+5. Build, flash, prove LED + button + one telemetry line before enabling extras.
+
+Full checklist: [docs/Next_Steps.md](docs/Next_Steps.md).
+
+### C. Run the mandatory demo on the board
+
+Power on → Standby telemetry → double-press into Battle → charge with single presses → **hold** to fire → flip for The Last of EE2028 → rescue **or** wait for timeout → confirm halt after `Cheerio!`.
+
+Walk the acceptance list in Next Steps before treating the demo as done.
+
+### D. Turn on Grove enhancements
+
+1. Wire: buzzer **D2**, IR **D3**, relay control **D4** (relay switches only an instructor-approved low-voltage load). Matrix on a free I2C bus; scan the HT16K33 address.
+2. Build with `-DEE_ENHANCEMENTS=1`.
+3. After `MX_I2Cx_Init`, pass the matrix handle into `Enhancements_HW_Setup` / `EE_MATRIX_I2C` (or leave `NULL` to skip the matrix).
+4. Re-run the mandatory flow; confirm matrix banners, chirps, and relay only at self-destruct.
+
+**Bench without the full drone loop:** `-DEE_ENHANCEMENTS=1 -DEE_BENCH=1` and `Enhancements_Bench_Init` / `Update` on Virtual COM.
+
+### E. Live VESPER with the board
+
+1. Close Tera Term / other apps holding the COM port.
+2. Serve `Command/` as in step A; click **Connect serial** (Chrome or Edge).
+3. To save a real mission log for replay later: [scripts/capture_uart_mission.md](scripts/capture_uart_mission.md).
+
+---
+
+## Build macros
 
 | Macro | Meaning |
 |-------|---------|
-| *(default)* | PR #3 baseline only — enhancements compiled out |
-| `-DEE_ENHANCEMENTS=1` | Live: adapter updates from drone status/events |
-| `-DEE_ENHANCEMENTS=1 -DEE_BENCH=1` | Bench: UART menu drives the same adapter (use `Enhancements_Bench_*`) |
+| *(default)* | Baseline only — enhancements compiled out |
+| `-DEE_ENHANCEMENTS=1` | Live adapter from drone status / events |
+| `-DEE_ENHANCEMENTS=1 -DEE_BENCH=1` | UART menu drives the same adapter |
 
-Live call sites (only):
+---
 
-- `Enhancements_OnEvent(DRONE_EVENT_LASER_FIRED, …)` where charge is deducted
-- `Enhancements_OnEvent(DRONE_EVENT_SELF_DESTRUCT_STARTED, …)` inside `Enter_Self_Destruct()`
-- `Enhancements_Update(&drone_status, now_ms)` each loop tick
-- Bounded final-effects wait in `SELF_DESTRUCT_DEAD` before halt
+## Repository map
 
-One rescue clock: `rescue_remaining_ms` is derived from `the_last_of_2028_entry_tick` + `RESCUE_TIMEOUT_MS`. The matrix/buzzer consume that remaining time (no second 21 s display countdown in live mode).
+```text
+Core/          Drone state machine (main.c) + drone.h
+App/           Grove drivers, enhancements adapter, telemetry EVT, tests
+Command/       VESPER dashboard, fixtures, Web Serial
+docs/          Design notes, contracts, acceptance plan
+scripts/       Serial monitor, UART capture notes, parser smoke test
+```
 
-## Board / Cube status (honest)
+---
 
-**Board of record:** **B-L4S5I-IOT01A** (STM32L4S5VITx). PR #3 / Lin baseline BSP paths (`Drivers/BSP/B-L4S5I-IOT01`, `stm32l4s5i_iot01*`) match this kit.
+## Status (honest)
 
-| Item | Status |
+| Item | State |
 |------|--------|
-| **Baseline source** | Lin Thant PR #3 (`linthant/basictasks`) brought into this worktree |
-| **Enhancement modules** | Copied from `darren/enhancements` `App/` |
-| **CubeIDE project / HAL / BSP** | **Not in this checkout** — `main.c` still references `B-L4S5I-IOT01` BSP paths and `main.h` |
-| **Board target** | **B-L4S5I-IOT01A** — confirmed; BSP folder `B-L4S5I-IOT01` / `stm32l4s5i_iot01*` aligns with PR #3 |
-| **Firmware build** | **Blocked here** until a Cube project with Drivers/BSP (and optional I2C handle for the HT16K33) is linked. App modules + adapter are structured to drop into that project |
-| **Hardware verify** | Matrix/buzzer/IR/relay were verified on Darren’s bench branch; live integration on-board is pending Cube + wiring |
+| Baseline + enhancement **source** | On `main` |
+| VESPER fixtures + Web Serial UI | Ready |
+| CubeIDE / HAL / BSP in this checkout | **Missing** — firmware build blocked here |
+| On-board verify of full live stack | Pending Cube + wiring |
+| mmWave aim, Wi‑Fi/BLE, UAV | Stretch / docs only |
 
-Arduino connector aliases (from lab Cube `main.h` / B-L4S5I-IOT01A `.ioc`): buzzer **D2 = PD14**, IR **D3 = PB0** (active-LOW), `CAP_EXPLODE` **D4 = PA3**. Prefer Cube-generated `ARD_D*` labels when the project is linked. Pass the matrix I2C handle via `EE_MATRIX_I2C` / `Enhancements_HW_Setup(..., &hi2cN)`; `NULL` skips the matrix safely (relay/buzzer/IR still run).
+---
 
-## Next steps (when Cube is present)
+## Docs
 
-1. Add `App/Inc` + `App/Src` to the CubeIDE include/source paths; define `EE_ENHANCEMENTS=1` for the live config.
-2. Wire `EE_MATRIX_I2C` to the HT16K33 I2C handle after `MX_I2Cx_Init`.
-3. Confirm USER button EXTI both edges + sensor BSP init as in PR #3.
-4. Bench: run `Enhancements_Bench_Init/Update` on Virtual COM to exercise adapter without the full drone loop.
+| Doc | When to open it |
+|-----|-----------------|
+| [docs/Next_Steps.md](docs/Next_Steps.md) | Cube bring-up + mandatory acceptance |
+| [docs/Telemetry_EVT_Contract.md](docs/Telemetry_EVT_Contract.md) | UART / `EVT` line formats |
+| [docs/Assignment2_Enhancements.md](docs/Assignment2_Enhancements.md) | Enhancement backlog #1–#7 |
+| [docs/Button_Input_Enhancement.md](docs/Button_Input_Enhancement.md) | Push-button classifier |
+| [docs/LED_Matrix_Design.md](docs/LED_Matrix_Design.md) | Matrix HUD |
+| [docs/Buzzer_Design.md](docs/Buzzer_Design.md) | Buzzer patterns |
+| [docs/IR_Design.md](docs/IR_Design.md) | IR threat |
+| [docs/Relay_Design.md](docs/Relay_Design.md) | CAP_EXPLODE relay |
+| [docs/Command_Center_Design.md](docs/Command_Center_Design.md) | VESPER design |
+| [docs/Darren's_Tasks.md](docs/Darren's_Tasks.md) | Work split / task status |

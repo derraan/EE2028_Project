@@ -44,30 +44,33 @@ Everything in the assignment's basic specification is a **minimum requirement**.
 
 ## What is missing now
 
-The repository currently contains only `Core/Src/main.c`, `Core/Inc/drone.h` and documentation. It does **not** yet contain:
+Application source for the mandatory baseline, enhancements adapter, telemetry EVT helpers and VESPER dashboard **is already in this repository** (`Core/Src/main.c`, `App/`, `Command/`). What is **not** in this checkout — and still blocks a firmware build — is the STM32CubeIDE project glue:
 
 - An STM32CubeMX `.ioc` file or complete STM32CubeIDE project
 - Startup code, linker script, CMSIS/HAL drivers or interrupt files
 - Real clock, GPIO, UART, I2C or timer initialization
 - Peripheral handles such as `hi2c2`, `huart1` and timer handles
-- Board Support Package (BSP) or sensor component drivers
-- Implemented sensor reads, telemetry, warnings, display, buzzer, relay or radar control
-- A build/test procedure
+- Board Support Package (BSP) or sensor component drivers under `Drivers/`
+- A documented CubeIDE import / build / flash procedure against this tree
 
-The current skeleton also misses or incorrectly handles mandatory behavior:
+### Software status vs hardware verify
 
-- Battle double press does not return to Standby.
-- Single presses are never resolved after waiting for the 0.5-second double-press window.
-- Laser charging, automatic firing and 5/10 energy consumption are comments only.
-- Telemetry is not sampled/formatted/sent every second and has no units.
-- Threshold monitoring does not replace telemetry when **any** reading is outside its range.
-- The skeleton incorrectly changes Standby to Battle when T/A/G exceed thresholds; the basic specification requires threshold logs, while the Standby mode switch is caused by a double press.
-- THE_LAST_OF_2028 has no entry timestamp, 10-second rescue timeout, periodic attack message or terminal shutdown.
-- LED output and 1 Hz / 2 Hz timing are not implemented.
-- Sensor globals do not preserve three-axis data or identify physical units.
-- `HAL_Delay(100)` prevents the intended event-driven timing architecture.
+| Area | In source | On-board verify |
+|------|-----------|-----------------|
+| Modes, dual-edge PB, hold-to-fire, charge, rescue / self-destruct | Yes (`main.c`) | Pending Cube + flash |
+| Six-sensor reads + units + threshold logging | Yes (BSP call sites) | Pending BSP link |
+| `EVT` emitters + weak `Telemetry_WriteLine` → `printf` | Yes | Pending USART retarget |
+| Matrix / buzzer / IR / relay via `Enhancements_*` | Yes (`-DEE_ENHANCEMENTS=1`) | Pending Cube + wiring |
+| VESPER fixture replay + Web Serial UI | Yes (`Command/`) | Live stream pending USART |
 
-The empty `SystemClock_Config()`, `MX_GPIO_Init()` and `MX_UART_Init()` functions in the skeleton must be replaced by CubeMX-generated initialization. Do not maintain competing handwritten and generated versions of these functions.
+Frozen gameplay (do not “fix” from older assignment wording without a focused patch):
+
+- Battle fire is **hold-to-fire** (≥500 ms, charge ≥5/10), not auto-fire on charge alone.
+- Standby → Battle on **double-press or T/A/G** threshold trip (PR #3).
+- Self-destruct at **10 s** without rescue **or** **5** failed upside-down rescues.
+- IR is observe-only (chirp + log); no mode/fire authority.
+
+When the Cube project lands, keep generated `SystemClock_Config()` / `MX_*_Init()` and drop competing handwritten copies. Link existing `App/` sources rather than rewriting drivers from scratch.
 
 ---
 
@@ -212,13 +215,12 @@ Suggested update periods:
 - [ ] Send `Entering BATTLE MODE` immediately and once on entry.
 - [ ] Blink the board LED at 1 Hz without blocking.
 - [ ] Implement single-press charging: add exactly 3/10 and cap at 10/10.
-- [ ] After each charge event, automatically fire whenever energy is at least 5/10.
-- [ ] Subtract exactly 5/10 after each automatic shot.
-- [ ] Keep the laser inactive and retain charge when energy is below 5/10.
+- [ ] Hold PB ≥500 ms in Battle with charge ≥5/10 to fire full-auto (−5 charge per shot every 500 ms).
+- [ ] Keep the laser inactive when energy is below 5/10 (hold reminds to recharge).
 - [ ] Handle Battle double press by returning immediately to Standby when THE_LAST_OF_2028 is not active.
-- [ ] Show charge progress on the matrix.
-- [ ] Flash the matrix while fully charged/armed.
-- [ ] Play the fire tone and update telemetry after firing.
+- [ ] Show charge progress on the matrix (enhancement path).
+- [ ] Flash the matrix while armed: Battle and charge ≥5/10 (enhancement path).
+- [ ] Play the fire tone and emit `EVT FIRE` after firing.
 - [ ] Enter THE_LAST_OF_2028 when the persistent upside-down condition is detected.
 
 ### THE_LAST_OF_2028
@@ -238,39 +240,36 @@ Suggested update periods:
 
 ---
 
-## Phase 6 — Enhancements (blocked until mandatory gate passes)
+## Phase 6 — Enhancements (source present; gate = on-board mandatory pass)
 
-Everything from this phase onward is optional enhancement work. Preserve the working mandatory baseline in source control before starting it.
+Optional enhancement **modules and the shared adapter already live under `App/`**. Preserve a working mandatory baseline before enabling `-DEE_ENHANCEMENTS=1` on hardware. Do not rewrite drivers from scratch — bind and verify the existing APIs.
 
 ### Grove modules and matrix controller
 
 ### Red LED matrix
 
-- [ ] Write an HT16K33 HAL-I2C driver: oscillator on, display on, brightness, clear and frame write.
-- [ ] Verify row/column orientation and bit order with a one-pixel test.
-- [ ] Add a compact 8×8 font for scrolling mode text.
-- [ ] Implement charge bar, armed flash, radar line, countdown digits and explosion bitmap.
-- [ ] Implement display priority:
-  1. Explosion/shutdown
-  2. THE_LAST_OF_2028 text/countdown
-  3. One-time `BATTLE MODE`
-  4. Armed flash
-  5. Charge bar
-  6. Radar azimuth
-- [ ] Make all scrolling and flashing non-blocking.
+- [x] HT16K33 HAL-I2C driver (`App/Src/ht16k33.c`): oscillator on, display on, brightness, clear and frame write.
+- [x] Compact 8×8 font, charge bar, armed flash, radar line, countdown digits and explosion (`status_display.c`).
+- [x] Display priority arbitration (explosion → Last → Battle banner → armed → charge → radar).
+- [x] Non-blocking scroll / flash driven by `HAL_GetTick()` / injected `now_ms`.
+- [ ] Verify row/column orientation on the linked Cube I2C bus (`EE_MATRIX_I2C`).
+- [ ] Confirm live path uses one 10 s `rescue_remaining_ms` clock (not the harness ~21 s sequence).
 
 ### IR reflective sensor
 
-- [ ] Confirm the exact module SKU, output type and safe supply voltage.
-- [ ] Measure active polarity and useful detection distance.
-- [ ] Add debounce/filtering and a configurable threshold if using ADC.
-- [ ] Map a validated detection event to the chosen threat behavior.
+- [x] Debounce adapter + test harness (`ir_threat.*`).
+- [x] Live policy: detect → chirp + log only (no mode/fire authority).
+- [ ] Confirm module SKU, polarity and distance on the wired D3/PB0 pin.
 
 ### Buzzer
 
-- [ ] Identify active versus passive buzzer.
-- [ ] Implement non-blocking chirp, fire, alarm and accelerating countdown patterns.
-- [ ] Ensure buzzer timing cannot delay sensor reads or button rescue.
+- [x] Active Grove buzzer patterns (chirp / fire / countdown / final burst) on D2/PD14.
+- [ ] Confirm patterns cannot starve PB rescue or sensor ticks on live hardware.
+
+### Relay
+
+- [x] `CAP_EXPLODE` adapter on D4/PA3; triggered by `DRONE_EVENT_SELF_DESTRUCT_STARTED`.
+- [ ] Power-cycle verify: pin always starts LOW.
 
 ---
 
@@ -343,11 +342,11 @@ Do these only after the wired #1–#4 demo is stable.
 
 ## Immediate next five actions
 
-1. Board is **B-L4S5I-IOT01A** — confirm Grove module SKUs and wire D2/D3/D4.
-2. Generate and commit the STM32CubeIDE `.ioc` baseline.
-3. Prove LED + button EXTI + USART1 Virtual COM.
-4. Configure I2C2 and prove all on-board sensor identities.
-5. Implement and verify the **mandatory basic-task acceptance checklist** before opening any enhancement branch.
+1. Generate and commit the STM32CubeIDE `.ioc` baseline for **B-L4S5I-IOT01A**; link `App/` + `Core/` sources.
+2. Prove LED + button EXTI + USART1 Virtual COM; retarget `Telemetry_WriteLine` / `printf`.
+3. Configure I2C2 / BSP and prove all on-board sensor identities.
+4. Run the **mandatory basic-task acceptance checklist** on hardware (software already written).
+5. Enable `-DEE_ENHANCEMENTS=1`, wire D2/D3/D4 + matrix I2C, then attach VESPER Web Serial.
 
 ## References
 

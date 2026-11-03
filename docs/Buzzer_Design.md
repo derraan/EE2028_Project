@@ -124,7 +124,19 @@ Current test backend:
 
 Uppercase `F`/`X`/`Z` avoid collisions with matrix keys `f`/`x`/`z`.
 
-## Integration (lab project)
+## Live adapter ownership
+
+With `-DEE_ENHANCEMENTS=1`, `Enhancements_Update` / `OnEvent` own buzzer playback:
+
+- IR detect → threat chirp
+- `DRONE_EVENT_LASER_FIRED` → laser fire pattern
+- `THE_LAST_OF_2028` with `rescue_remaining_ms` → countdown pattern (`Buzzer_SetCountdown` / Play countdown)
+- `DRONE_EVENT_SELF_DESTRUCT_STARTED` → final burst
+- Rescue / shutdown → `Buzzer_Stop`
+
+Live path prefers countdown over the standalone `LAST_WARNING` loop. Pin: D2 / PD14 via `enhancements_hw.c`.
+
+## Integration (lab / harness project)
 
 - Copy into `EE2028_Project_Test/Core/Src` and `Core/Inc`; list in `Debug/Core/Src/subdir.mk` and `objects.list`.
 - `Buzzer_Test_Init` runs from `StatusDisplay_Test_Init`; `Buzzer_Test_Update` runs each loop tick.

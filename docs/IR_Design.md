@@ -6,12 +6,14 @@ Task 4 implementation for the Grove infrared reflective sensor enhancement.
 
 ## Context
 
-From [docs/Darren's_Tasks.md](Darren's_Tasks.md) Task 4 and [docs/Assignment2_Enhancements.md](Assignment2_Enhancements.md), IR is a low-complexity threat trigger:
+From [docs/Darren's_Tasks.md](Darren's_Tasks.md) Task 4 and [docs/Assignment2_Enhancements.md](Assignment2_Enhancements.md), IR is a low-complexity threat cue:
 
 - detect close reflective object (hand/card)
 - emit one clean threat event per encounter
 - avoid event spam while object remains present
 - re-arm after clear
+
+**Frozen live policy:** detect → UART log + buzzer chirp only. IR must **not** enter Battle, fire the laser, or emit machine `EVT IR=` from the live adapter (harness may still print `EVT IR=` / `EVT THREAT` for bench debugging). See root [README.md](../README.md) frozen rules.
 
 Like Task 2/3, the module is non-blocking and tick-driven (`IR_Update(now_ms)`), with no `HAL_Delay`.
 
@@ -126,10 +128,19 @@ Update behavior:
 
 ## Integration notes
 
+### Live adapter
+
+- `Enhancements_Update` polls IR via the injected backend.
+- On detect: `printf` threat line + `Buzzer_Play(BUZZER_PATTERN_THREAT_CHIRP)` — no mode/fire authority, no live `EVT IR=`.
+- Pin: D3 / PB0, active-LOW (see `enhancements_hw.c`).
+
+### Test harness
+
 - `StatusDisplay_Test_Update()` keeps one UART owner and routes unknown keys:
   - IR first (`IR_Test_HandleKey`)
   - then buzzer (`Buzzer_Test_HandleKey`)
 - `IR_Test_Update(now_ms)` runs once per loop tick, non-blocking.
+- Harness may print `EVT IR=1/0` and `EVT THREAT source=IR` — those tags are harness-only relative to the Telemetry EVT contract.
 
 ## Lab sync (CubeIDE project)
 
