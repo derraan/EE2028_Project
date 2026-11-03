@@ -1,6 +1,7 @@
 #include "status_display.h"
 #include "buzzer_test.h"
 #include "ir_threat_test.h"
+#include "relay_effect_test.h"
 #include <string.h>
 
 typedef enum {
@@ -21,6 +22,7 @@ static StatusAutoState_t s_auto_state = AUTO_IDLE;
 static uint32_t s_auto_step_start = 0U;
 static uint8_t s_auto_charge = 0U;
 static uint8_t s_auto_azimuth = 0U;
+static uint8_t s_prev_explosion = 0U;
 
 static void UartPrint(const char *msg)
 {
@@ -47,6 +49,7 @@ static void PrintMenu(void)
     UartPrint("--- Buzzer ---\r\n");
     Buzzer_Test_PrintMenu();
     IR_Test_PrintMenu();
+    Relay_Test_PrintMenu();
     UartPrint("note: buzzer uses uppercase F/X/Z to avoid key clash\r\n");
     UartPrint("h : show this menu\r\n");
 }
@@ -151,9 +154,11 @@ void StatusDisplay_Test_Init(StatusDisplay_HandleTypeDef *h,
     s_huart = huart;
     s_radar_cycle = 0xFFU;
     s_auto_state = AUTO_IDLE;
+    s_prev_explosion = 0U;
     StatusDisplay_Init(s_status, dev);
     Buzzer_Test_Init(huart);
     IR_Test_Init(huart);
+    Relay_Test_Init(huart);
     PrintMenu();
 }
 
@@ -215,12 +220,15 @@ void StatusDisplay_Test_Update(uint32_t now_ms)
                 break;
             case 'z':
                 StatusDisplay_Rescue(s_status);
+                Relay_Test_OnRescue();
                 break;
             case 'x':
                 StatusDisplay_TriggerExplosion(s_status);
                 break;
             case '0':
                 StatusDisplay_Reset(s_status);
+                Relay_Test_OnRescue();
+                s_prev_explosion = 0U;
                 break;
             case 's':
                 AutoSequence_Start(now_ms);
@@ -230,8 +238,10 @@ void StatusDisplay_Test_Update(uint32_t now_ms)
                 PrintMenu();
                 break;
             default:
-                if (IR_Test_HandleKey(ch, now_ms) == 0U) {
-                    (void)Buzzer_Test_HandleKey(ch, now_ms);
+                if (Relay_Test_HandleKey(ch, now_ms) == 0U) {
+                    if (IR_Test_HandleKey(ch, now_ms) == 0U) {
+                        (void)Buzzer_Test_HandleKey(ch, now_ms);
+                    }
                 }
                 break;
         }
@@ -240,5 +250,12 @@ void StatusDisplay_Test_Update(uint32_t now_ms)
     AutoSequence_Update(now_ms);
     IR_Test_Update(now_ms);
     Buzzer_Test_Update(now_ms);
+    Relay_Test_Update(now_ms);
     (void)StatusDisplay_Update(s_status, now_ms);
+
+    /* Rising edge of explosion_active → CAP_EXPLODE HIGH (countdown 0 or 'x') */
+    if ((s_status->explosion_active != 0U) && (s_prev_explosion == 0U)) {
+        Relay_Test_OnExplosion(now_ms);
+    }
+    s_prev_explosion = s_status->explosion_active;
 }

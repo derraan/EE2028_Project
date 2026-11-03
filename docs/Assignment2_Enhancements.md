@@ -63,6 +63,8 @@ Mode text temporarily interrupts the normal screen. Radar tracking resumes after
 
 The GPIO drives the relay module's control input, not a relay coil directly. The relay must switch only a safe, instructor-approved low-voltage simulation load. Do not rupture, short or overcharge a physical capacitor.
 
+Implementation: [docs/Relay_Design.md](Relay_Design.md) — `CAP_EXPLODE` on Arduino **D4 / PA3**, latched HIGH at boom, LOW on rescue/init.
+
 ### 4. Simple Command Center (UART)
 | | |
 |--|--|
