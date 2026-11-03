@@ -27,15 +27,16 @@ Everything in the assignment's basic specification is a **minimum requirement**.
 - [ ] Entering Battle sends `Entering BATTLE MODE` immediately and once.
 - [ ] Battle LED blinks at 1 Hz.
 - [ ] Battle single press adds exactly 3/10 charge, with charge represented precisely enough to avoid float-comparison errors.
-- [ ] At charge ≥5/10, the laser fires automatically and consumes exactly 5/10 charge.
-- [ ] At charge <5/10, the laser stays inactive.
+- [ ] At charge ≥5/10, hold PB >500 ms to fire (full-auto while held; −5 charge per shot every 500 ms).
+- [ ] At charge <5/10, the laser stays inactive (hold reminds to recharge; single press adds +3).
 - [ ] Battle double press returns to Standby when THE_LAST_OF_EE2028 is not active.
 - [ ] Upside-down detection enters THE_LAST_OF_EE2028.
 - [ ] THE_LAST_OF_EE2028 LED blinks at 2 Hz.
 - [ ] `Drone Was Attacked!` is sent once per second while THE_LAST_OF_EE2028 is active.
-- [ ] A double press within the 10-second rescue window clears THE_LAST_OF_EE2028 and returns to normal Battle.
+- [ ] A double press while upright clears THE_LAST_OF_EE2028 and returns to Battle.
 - [ ] Single presses during THE_LAST_OF_EE2028 are ignored.
-- [ ] If no rescue arrives within 10 seconds, a final message is sent and all communication terminates.
+- [ ] Five failed rescue double presses while still upside down enter self-destruct → sacrifice → `Cheerio!` → permanent halt.
+- [ ] After 10 `Drone was attacked!` messages (~10 s) with no rescue, enter self-destruct → sacrifice → `Cheerio!` → permanent halt.
 - [ ] The terminated state cannot accidentally resume telemetry or process normal controls.
 - [ ] All of the above runs together repeatedly without blocking timing failures.
 

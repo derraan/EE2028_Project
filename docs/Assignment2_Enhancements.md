@@ -2,6 +2,8 @@
 
 High-impact extras for the spaceship drone, biased toward **hardware we already own** first, then stretch builds. Basics (T/P/H/A/G/M, three modes, PB, UART) stay in firmware; this file is only for beyond-basic ideas.
 
+**Button-only input enhancement** (dual-edge EXTI, GPIO duration windows, debounce, mode/laser/rescue gesture map): see [`Button_Input_Enhancement.md`](Button_Input_Enhancement.md). That doc is scoped to the USER button only — not matrix/IR/buzzer.
+
 ---
 
 ## Owned hardware

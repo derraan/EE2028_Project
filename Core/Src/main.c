@@ -26,6 +26,14 @@ extern void initialise_monitor_handles(void); /* for semi-hosting support (print
 #define THRESHOLD_M 1000.0f
 #define THRESHOLD_P 900.0f
 
+/* Push-button timing (USER button is active-low) */
+#define PB_DEBOUNCE_MS           100U
+#define PB_DOUBLE_PRESS_MS       500U
+#define PB_HOLD_MS               500U
+#define PB_FIRE_PERIOD_MS        500U
+#define ATTACK_MSG_LIMIT         10U
+#define ATTACK_MSG_PERIOD_MS     1000U
+
 /* Define states */
 typedef enum {
 	STANDBY_MODE,
@@ -37,13 +45,29 @@ typedef enum {
 
 DroneState_t current_state = STANDBY_MODE;
 
-/* Push button & tracking variables */
-volatile uint32_t last_pb_press_time = 0;
-bool button_was_pressed = false;
-uint32_t press_start_tick = 0;
-bool hold_action_triggered = false;
+/*
+ * Push button: EXTI captures rising+falling edges; main loop reads GPIO level
+ * to confirm press/hold/release and measures the falling→rising duration window.
+ * Configure USER button EXTI as rising AND falling (or poll still recovers release).
+ */
+volatile uint32_t pb_last_edge_tick = 0;
+volatile bool pb_edge_pending = false;
+volatile uint32_t pb_edge_tick = 0;
+
+bool pb_is_down = false;
+uint32_t pb_down_tick = 0;
+uint32_t pb_last_press_duration_ms = 0;
+bool pb_hold_latched = false;
+bool pb_low_charge_warned = false;
+uint32_t pb_last_fire_tick = 0;
+
+bool pb_single_armed = false;
+uint32_t pb_single_deadline_tick = 0;
+uint32_t pb_last_short_press_tick = 0;
+
 float current_accel_z = 0.0f;
 int the_last_of_ee2028_rescue_attempts = 0;
+uint32_t attack_msg_count = 0;
 
 /* Laser Gun Energy Tracking (Initialized to 10/10 full charge, remembers last charge) */
 int laser_charge = 10;
@@ -57,8 +81,14 @@ uint32_t noble_sacrifice_tick = 0;
 bool sacrifice_sent = false;
 bool cheerio_sent = false;
 
-/* Function prototype for threshold checks */
+/* Prototypes */
 void Check_And_Log_Thresholds(float t, float p, float h, float a[3], float g[3], float m[3]);
+void Process_PushButton(void);
+void PB_OnDoublePress(void);
+void PB_OnSinglePress(void);
+void PB_CancelPendingSingle(void);
+void Enter_The_Last_Of_EE2028(void);
+void Enter_Self_Destruct(const char *reason);
 
 int main(void)
 {
@@ -69,6 +99,8 @@ int main(void)
 
 	/* Peripheral and Board Initializations using BSP functions */
 	BSP_LED_Init(LED2);
+	/* Prefer BOTH edges so rising (release) and falling (press) each generate EXTI.
+	 * If the BSP only enables one edge, Process_PushButton() still tracks level via GPIO. */
 	BSP_PB_Init(BUTTON_USER, BUTTON_MODE_EXTI);
 
 	BSP_ACCELERO_Init();
@@ -89,7 +121,7 @@ int main(void)
 		accel_data[0] = (float)accel_data_i16[0] * (9.8f / 1000.0f);
 		accel_data[1] = (float)accel_data_i16[1] * (9.8f / 1000.0f);
 		accel_data[2] = (float)accel_data_i16[2] * (9.8f / 1000.0f);
-		current_accel_z = accel_data[2]; /* Save for ISR check */
+		current_accel_z = accel_data[2];
 
 		float gyro_data[3];
 		BSP_GYRO_GetXYZ(gyro_data);
@@ -111,22 +143,18 @@ int main(void)
 		/* --- Global Check for "The Last of EE2028" (Upside Down) --- */
 		if ((current_state == STANDBY_MODE || current_state == BATTLE_MODE) && accel_data[2] < -4.0f)
 		{
-			current_state = THE_LAST_OF_EE2028;
-			the_last_of_ee2028_entry_tick = HAL_GetTick();
-			led_blink_tick = HAL_GetTick(); /* Reset blink timer for 2 Hz */
-			the_last_of_ee2028_rescue_attempts = 0; /* Reset attempt counter on entry */
-			printf("Drone is upside down! Entering THE LAST OF EE2028.\r\n");
+			Enter_The_Last_Of_EE2028();
 		}
+
+		/* --- Push button: EXTI edges + GPIO level hold/release --- */
+		Process_PushButton();
 
 		/* --- 2. State Machine Handling --- */
 		switch (current_state)
 		{
 			case STANDBY_MODE:
-				/* LED always ON in Standby mode */
 				BSP_LED_On(LED2);
-				hold_action_triggered = false;
 
-				/* Check if T, A, or G exceed thresholds -> Triggers direct transition to Battle Mode */
 				{
 					bool tag_exceeded = (temp_data > THRESHOLD_T) ||
 						(accel_data[0] > THRESHOLD_A || accel_data[1] > THRESHOLD_A || accel_data[2] > THRESHOLD_A) ||
@@ -140,6 +168,7 @@ int main(void)
 					if (tag_exceeded) {
 						current_state = BATTLE_MODE;
 						led_blink_tick = HAL_GetTick();
+						PB_CancelPendingSingle();
 						printf("Critical T/A/G threshold violated -> Entering BATTLE MODE. (Laser Charge: %d/10)\r\n", laser_charge);
 					}
 					else if (any_exceeded) {
@@ -168,38 +197,25 @@ int main(void)
 					BSP_LED_Toggle(LED2);
 				}
 
-				/* --- Button Hold & Continuous Firing Logic --- */
-				if (BSP_PB_GetState(BUTTON_USER) == GPIO_PIN_RESET) /* Active-low push button check */
+				/* Full-auto fire while held: GPIO still low after hold latch */
+				if (pb_hold_latched && pb_is_down &&
+					(BSP_PB_GetState(BUTTON_USER) == GPIO_PIN_RESET))
 				{
-					if (!button_was_pressed) {
-						button_was_pressed = true;
-						press_start_tick = HAL_GetTick();
-						hold_action_triggered = false;
-					}
-					else if (!hold_action_triggered && (HAL_GetTick() - press_start_tick >= 500))
-					{
-						/* Button has been held down for > 500ms */
-						hold_action_triggered = true;
-
-						if (laser_charge < 5) {
+					if (laser_charge < 5) {
+						if (!pb_low_charge_warned) {
 							printf("Laser charge too low (%d/10) to fire! Please single-press to recharge the laser gun.\r\n", laser_charge);
-						} else {
-							/* Fires continuously while held until charge drops below 5/10 */
-							while (laser_charge >= 5 && BSP_PB_GetState(BUTTON_USER) == GPIO_PIN_RESET) {
-								laser_charge -= 5;
-								printf("Laser gun fired continuously! PEW PEW! (Remaining charge: %d/10)\r\n", laser_charge);
-								HAL_Delay(500); /* Pace continuous shots */
-							}
-
-							/* If charge dropped below 5 while holding, immediately remind to recharge without needing another press */
-							if (laser_charge < 5 && BSP_PB_GetState(BUTTON_USER) == GPIO_PIN_RESET) {
-								printf("Laser charge too low (%d/10) to fire! Please single-press to recharge the laser gun.\r\n", laser_charge);
-							}
+							pb_low_charge_warned = true;
 						}
 					}
-				}
-				else {
-					button_was_pressed = false;
+					else if ((HAL_GetTick() - pb_last_fire_tick) >= PB_FIRE_PERIOD_MS) {
+						pb_last_fire_tick = HAL_GetTick();
+						laser_charge -= 5;
+						printf("Laser gun fired continuously! PEW PEW! (Remaining charge: %d/10)\r\n", laser_charge);
+						if (laser_charge < 5) {
+							printf("Laser charge too low (%d/10) to fire! Please single-press to recharge the laser gun.\r\n", laser_charge);
+							pb_low_charge_warned = true;
+						}
+					}
 				}
 				break;
 
@@ -210,10 +226,22 @@ int main(void)
 					BSP_LED_Toggle(LED2);
 				}
 
-				/* Sends "Drone was attacked" message every 1s */
-				if ((HAL_GetTick() - tick_1s_attack_msg) >= 1000) {
+				/* One "Drone was attacked" per second; after 10 with no rescue -> self-destruct */
+				if ((HAL_GetTick() - tick_1s_attack_msg) >= ATTACK_MSG_PERIOD_MS) {
 					tick_1s_attack_msg = HAL_GetTick();
+					attack_msg_count++;
 					printf("Drone was attacked!\r\n");
+
+					if (attack_msg_count >= ATTACK_MSG_LIMIT) {
+						Enter_Self_Destruct("10s elapsed with no rescue (10 attack alerts)");
+					}
+				}
+
+				/* Backup: wall-clock 10s from mode entry */
+				if (current_state == THE_LAST_OF_EE2028 &&
+					(HAL_GetTick() - the_last_of_ee2028_entry_tick) >= (ATTACK_MSG_LIMIT * ATTACK_MSG_PERIOD_MS))
+				{
+					Enter_Self_Destruct("10s rescue window expired");
 				}
 				break;
 
@@ -224,7 +252,6 @@ int main(void)
 					sacrifice_sent = true;
 				}
 
-				/* Wait 1s after noble sacrifice -> Send "Cheerio!" */
 				if (sacrifice_sent && !cheerio_sent && (HAL_GetTick() - noble_sacrifice_tick) >= 1000) {
 					printf("Cheerio!\r\n");
 					cheerio_sent = true;
@@ -233,111 +260,187 @@ int main(void)
 				break;
 
 			case SELF_DESTRUCT_DEAD:
-				BSP_LED_Off(LED2); /* LED OFF permanently */
+				BSP_LED_Off(LED2);
 				while (1) {
 					/* Permanent self-destruct halt */
 				}
 				break;
 		}
 
-		HAL_Delay(10); /* Small loop tick delay */
+		HAL_Delay(10);
 	}
 }
 
-/* --- EXTI Interrupt Callback for Push Button (USER_BUTTON) --- */
+/* --- EXTI: stamp rising/falling edges (GPIO level classified in Process_PushButton) --- */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-	if (GPIO_Pin == USER_BUTTON_PIN)
+	if (GPIO_Pin != USER_BUTTON_PIN) {
+		return;
+	}
+
+	uint32_t now = HAL_GetTick();
+	if ((now - pb_last_edge_tick) < PB_DEBOUNCE_MS) {
+		return;
+	}
+	pb_last_edge_tick = now;
+	pb_edge_tick = now;
+	pb_edge_pending = true;
+}
+
+/*
+ * Pair EXTI edge stamps with live GPIO level:
+ *  - falling / GPIO low  -> press start (start duration window)
+ *  - rising  / GPIO high -> press end   (duration = release - press)
+ * Hold: still low after PB_HOLD_MS. Short press: released before PB_HOLD_MS.
+ */
+void Process_PushButton(void)
+{
+	const bool pressed = (BSP_PB_GetState(BUTTON_USER) == GPIO_PIN_RESET);
+	const uint32_t now = HAL_GetTick();
+
+	/* Optional: consume EXTI edge stamp (confirms an edge occurred; GPIO decides which) */
+	if (pb_edge_pending) {
+		pb_edge_pending = false;
+		(void)pb_edge_tick;
+	}
+
+	/* Press start: GPIO low */
+	if (pressed && !pb_is_down) {
+		pb_is_down = true;
+		pb_down_tick = now;
+		pb_hold_latched = false;
+		pb_low_charge_warned = false;
+		pb_last_fire_tick = 0;
+	}
+
+	/* Hold crossed while still down (GPIO still pressed) */
+	if (pb_is_down && pressed && !pb_hold_latched &&
+		(now - pb_down_tick) >= PB_HOLD_MS)
 	{
-		uint32_t current_time = HAL_GetTick();
-		uint32_t time_since_last = current_time - last_pb_press_time;
+		pb_hold_latched = true;
+		PB_CancelPendingSingle();
+		pb_last_short_press_tick = 0;
+		/* Fire immediately on hold latch, then every PB_FIRE_PERIOD_MS */
+		pb_last_fire_tick = now - PB_FIRE_PERIOD_MS;
+		/* Battle fire runs in state machine; other modes ignore hold */
+	}
 
-		/* Debounce filter: Ignore switch bounce (< 100ms) */
-		if (time_since_last < 100) {
-			return;
+	/* Release: GPIO high — measure falling→rising window */
+	if (!pressed && pb_is_down) {
+		pb_last_press_duration_ms = now - pb_down_tick;
+		pb_is_down = false;
+
+		if (pb_hold_latched) {
+			/* Hold/release pair: do not treat as a click for double-press */
+			pb_hold_latched = false;
 		}
-
-		if (current_state == STANDBY_MODE)
-		{
-			/* Double press window: second press arrives within 500ms following first press */
-			if (time_since_last <= 500)
+		else if (pb_last_press_duration_ms < PB_HOLD_MS) {
+			/* Short press completed (rising after falling within hold window) */
+			if (pb_last_short_press_tick != 0 &&
+				(now - pb_last_short_press_tick) <= PB_DOUBLE_PRESS_MS)
 			{
-				current_state = BATTLE_MODE;
-				led_blink_tick = HAL_GetTick();
-				printf("PB Double Press (Standby) -> Entering BATTLE MODE. (Laser Charge: %d/10)\r\n", laser_charge);
-				last_pb_press_time = 0;
+				PB_CancelPendingSingle();
+				pb_last_short_press_tick = 0;
+				PB_OnDoublePress();
 			}
-			else
-			{
-				last_pb_press_time = current_time;
-			}
-		}
-		else if (current_state == BATTLE_MODE)
-		{
-			/* Double press window: second press arrives within 500ms following first press returns to Standby */
-			if (time_since_last <= 500)
-			{
-				current_state = STANDBY_MODE;
-				BSP_LED_On(LED2);
-				printf("PB Double Press (Battle) -> Returning to STANDBY MODE. (Laser Charge: %d/10)\r\n", laser_charge);
-				last_pb_press_time = 0;
-			}
-			else
-			{
-				last_pb_press_time = current_time;
-
-				/* Single press / recharge action (press arrived > 500ms after the last one) */
-				if (!hold_action_triggered)
-				{
-					if (laser_charge < 5)
-					{
-						laser_charge += 3;
-						if (laser_charge > 10) laser_charge = 10;
-						printf("Laser recharging... Current charge: %d/10\r\n", laser_charge);
-					}
-					else
-					{
-						printf("Laser charge is already sufficient (>=5/10). Hold button >500ms to fire! Or double-press within 500ms to return to standby mode\r\n");
-					}
-				}
-			}
-		}
-		else if (current_state == THE_LAST_OF_EE2028)
-		{
-			/* Rescue double press window: second press arrives within 500ms following first press counts as 1 rescue attempt */
-			if (time_since_last <= 500)
-			{
-				the_last_of_ee2028_rescue_attempts++;
-				printf("Rescue attempt %d/5 (Double Press detected)...\r\n", the_last_of_ee2028_rescue_attempts);
-
-				if (current_accel_z < -4.0f)
-				{
-					if (the_last_of_ee2028_rescue_attempts >= 5)
-					{
-						printf("5 rescue attempts failed while upside down! Drone self-destructing...\r\n");
-						current_state = SELF_DESTRUCT_TRIGGERED;
-						the_last_of_ee2028_rescue_attempts = 0;
-					}
-					else
-					{
-						printf("Drone is still upside down! Flip upright and double press to rescue.\r\n");
-					}
-				}
-				else
-				{
-					current_state = BATTLE_MODE;
-					led_blink_tick = HAL_GetTick();
-					printf("PB Rescue Action: Successfully reverted to Battle Mode.\r\n");
-					the_last_of_ee2028_rescue_attempts = 0;
-				}
-				last_pb_press_time = 0;
-			}
-			else
-			{
-				last_pb_press_time = current_time;
+			else {
+				pb_last_short_press_tick = now;
+				pb_single_armed = true;
+				pb_single_deadline_tick = now + PB_DOUBLE_PRESS_MS;
 			}
 		}
 	}
+
+	/* Deferred single press: no second short press within double-press window */
+	if (pb_single_armed && (int32_t)(now - pb_single_deadline_tick) >= 0) {
+		pb_single_armed = false;
+		pb_last_short_press_tick = 0;
+		PB_OnSinglePress();
+	}
+}
+
+void PB_CancelPendingSingle(void)
+{
+	pb_single_armed = false;
+}
+
+void PB_OnDoublePress(void)
+{
+	if (current_state == STANDBY_MODE) {
+		current_state = BATTLE_MODE;
+		led_blink_tick = HAL_GetTick();
+		printf("PB Double Press (Standby) -> Entering BATTLE MODE. (Laser Charge: %d/10)\r\n", laser_charge);
+	}
+	else if (current_state == BATTLE_MODE) {
+		current_state = STANDBY_MODE;
+		BSP_LED_On(LED2);
+		printf("PB Double Press (Battle) -> Returning to STANDBY MODE. (Laser Charge: %d/10)\r\n", laser_charge);
+	}
+	else if (current_state == THE_LAST_OF_EE2028) {
+		the_last_of_ee2028_rescue_attempts++;
+		printf("Rescue attempt %d/5 (Double Press detected)...\r\n", the_last_of_ee2028_rescue_attempts);
+
+		if (current_accel_z < -4.0f) {
+			if (the_last_of_ee2028_rescue_attempts >= 5) {
+				Enter_Self_Destruct("5 rescue attempts failed while upside down");
+			}
+			else {
+				printf("Drone is still upside down! Flip upright and double press to rescue.\r\n");
+			}
+		}
+		else {
+			current_state = BATTLE_MODE;
+			led_blink_tick = HAL_GetTick();
+			the_last_of_ee2028_rescue_attempts = 0;
+			attack_msg_count = 0;
+			printf("PB Rescue Action: Successfully reverted to Battle Mode.\r\n");
+		}
+	}
+}
+
+void PB_OnSinglePress(void)
+{
+	if (current_state != BATTLE_MODE) {
+		return; /* Standby / THE_LAST_OF_EE2028: single presses ignored */
+	}
+
+	if (laser_charge < 5) {
+		laser_charge += 3;
+		if (laser_charge > 10) {
+			laser_charge = 10;
+		}
+		printf("Laser recharging... Current charge: %d/10\r\n", laser_charge);
+	}
+	else {
+		printf("Laser charge is already sufficient (>=5/10). Hold button >500ms to fire! Or double-press within 500ms to return to standby mode\r\n");
+	}
+}
+
+void Enter_The_Last_Of_EE2028(void)
+{
+	current_state = THE_LAST_OF_EE2028;
+	the_last_of_ee2028_entry_tick = HAL_GetTick();
+	tick_1s_attack_msg = HAL_GetTick();
+	led_blink_tick = HAL_GetTick();
+	the_last_of_ee2028_rescue_attempts = 0;
+	attack_msg_count = 0;
+	PB_CancelPendingSingle();
+	pb_last_short_press_tick = 0;
+	printf("Drone is upside down! Entering THE LAST OF EE2028.\r\n");
+}
+
+void Enter_Self_Destruct(const char *reason)
+{
+	if (current_state == SELF_DESTRUCT_TRIGGERED || current_state == SELF_DESTRUCT_DEAD) {
+		return;
+	}
+	printf("%s! Drone self-destructing...\r\n", reason);
+	current_state = SELF_DESTRUCT_TRIGGERED;
+	sacrifice_sent = false;
+	cheerio_sent = false;
+	the_last_of_ee2028_rescue_attempts = 0;
+	attack_msg_count = 0;
+	PB_CancelPendingSingle();
 }
 
 /* --- Threshold Warning Logging Function --- */
