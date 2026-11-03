@@ -1,0 +1,9 @@
+.flight-stage{position:relative;height:min(65vh,680px);min-height:360px;border:1px solid #30413e;overflow:hidden;background:#101f25}
+#flightCanvas{display:block;width:100%;height:100%;touch-action:none}
+.flight-top,.flight-bottom{position:absolute;left:24px;right:24px;display:flex;justify-content:space-between;gap:16px;font:11px monospace;letter-spacing:2px;pointer-events:none}
+.flight-top{top:22px;color:#b6c6c2}.flight-bottom{bottom:24px;color:#c2f59b}
+.flight-objective{position:absolute;top:70px;left:24px;pointer-events:none;text-shadow:0 2px 12px #000}
+.flight-objective small{font:10px monospace;letter-spacing:3px;color:#b9f587}.flight-objective h2{font-size:28px;margin:10px 0}.flight-objective p{font-size:12px;color:#bacac7}
+.flight-reticle{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font:40px monospace;color:#c5f3b0;pointer-events:none}
+.flight-toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.flight-toolbar button:first-child{background:#b9f587;color:#142019}.flight-summary{display:flex;justify-content:space-between;gap:20px;color:#94aaa3;font:11px monospace;line-height:1.7}.flight-summary p:last-child{color:#c8dacb;max-width:50%}
+@media(max-width:650px){.flight-top{font-size:8px}.flight-objective h2{font-size:22px}.flight-summary{display:block}.flight-summary p:last-child{max-width:none}.flight-toolbar button{padding:10px;font-size:11px}.flight-bottom{font-size:9px;letter-spacing:0}}
