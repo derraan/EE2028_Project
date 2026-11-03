@@ -1,9 +1,9 @@
 /**
  * @file telemetry_evt.h
- * @brief Machine-readable EVT lines + PR #3 sensor telemetry over USART/VCP.
+ * @brief Unified mission UART protocol (human lines + EVT) for USART/VCP.
  *
- * Human-readable prints stay as-is. EVT lines are one-per-line and share the
- * same UART stream so Tera Term and VESPER both consume them.
+ * Mission-facing text goes through Telemetry_* so Tera Term and VESPER share
+ * one stream. Keep CubeIDE console printf for debug only (semihosting).
  *
  * See docs/Telemetry_EVT_Contract.md for the wire contract.
  */
@@ -27,10 +27,17 @@ extern "C" {
 #define EVT_REASON_EARLY         "early"
 
 /**
- * Low-level line writer. Default weak impl uses printf (semihosting / retarget).
- * Override with USART TX to ST-LINK Virtual COM @ 115200 8N1 when Cube is wired.
+ * Low-level line writer (appends \\r\\n). Default weak impl uses printf
+ * (semihosting) so mission lines still appear in CubeIDE until a strong
+ * USART override is linked — see App/Src/telemetry_uart_hal.c.example.
  */
 void Telemetry_WriteLine(const char *line);
+
+/**
+ * Format one mission line (no trailing newline in fmt) then Telemetry_WriteLine.
+ * Use for human-readable UART prose; do not use for CubeIDE-only debug.
+ */
+void Telemetry_Printf(const char *fmt, ...);
 
 /** PR #3 sensor layout (Standby nominal path). Vectors keep axis order X,Y,Z. */
 void Telemetry_SendSensors(float t_c, float p_hpa, float h_pct,

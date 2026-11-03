@@ -1,9 +1,10 @@
 /**
  * @file telemetry_evt.c
- * @brief EVT / sensor line emitters for USART Virtual COM + VESPER.
+ * @brief EVT / sensor / mission-prose emitters for USART Virtual COM + VESPER.
  */
 #include "telemetry_evt.h"
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -12,9 +13,11 @@
 #endif
 
 /**
- * Default transport: printf (semihosting or libc retarget).
- * When MX_UART_Init / huart1 exist, provide a strong Telemetry_WriteLine that
- * HAL_UART_Transmit()'s the buffer + "\r\n" to the ST-LINK VCP.
+ * Default transport: printf (semihosting) so CubeIDE still shows mission lines
+ * before USART is wired. Provide a strong Telemetry_WriteLine (HAL_UART_Transmit
+ * to ST-LINK VCP @ 115200 8N1) from the Cube project — see
+ * App/Src/telemetry_uart_hal.c.example. After that override links, keep using
+ * plain printf only for debug notes that must not reach VESPER.
  */
 __attribute__((weak)) void Telemetry_WriteLine(const char *line)
 {
@@ -22,6 +25,34 @@ __attribute__((weak)) void Telemetry_WriteLine(const char *line)
 		return;
 	}
 	printf("%s\r\n", line);
+}
+
+void Telemetry_Printf(const char *fmt, ...)
+{
+	char buf[TELEMETRY_LINE_MAX];
+	va_list ap;
+	int n;
+
+	if (fmt == NULL) {
+		return;
+	}
+
+	va_start(ap, fmt);
+	n = vsnprintf(buf, sizeof(buf), fmt, ap);
+	va_end(ap);
+
+	if (n < 0) {
+		return;
+	}
+	/* Drop a trailing newline if the caller left one in; WriteLine adds CRLF. */
+	if ((n > 0) && (buf[n - 1] == '\n')) {
+		buf[n - 1] = '\0';
+		n--;
+		if ((n > 0) && (buf[n - 1] == '\r')) {
+			buf[n - 1] = '\0';
+		}
+	}
+	Telemetry_WriteLine(buf);
 }
 
 void Telemetry_SendSensors(float t_c, float p_hpa, float h_pct,

@@ -1,0 +1,51 @@
+/**
+ * @file telemetry_uart_hal.c.example
+ * @brief Strong Telemetry_WriteLine → ST-LINK Virtual COM (USART).
+ *
+ * HOW TO ENABLE (CubeIDE project that has HAL + USART):
+ *  1. Enable USART1 (or the ST-LINK VCP UART) @ 115200 8N1 in CubeMX.
+ *  2. Copy this file to Core/Src/telemetry_uart_hal.c (or App/Src/) and
+ *     add it to the build. Do NOT keep the .example suffix in the build.
+ *  3. Set EE_TELEMETRY_USART=1 in the preprocessor defines.
+ *  4. Point TELEMETRY_HUART at your handle (default: huart1).
+ *
+ * After this links, Telemetry_* / Telemetry_Printf go to the VCP for Tera Term
+ * and VESPER. Plain printf() can stay on semihosting for CubeIDE debug only.
+ *
+ * Demo tip: close Tera Term before Chrome Web Serial opens the same COM port.
+ */
+#if defined(EE_TELEMETRY_USART) && (EE_TELEMETRY_USART != 0)
+
+#include "telemetry_evt.h"
+#include "main.h" /* or usart.h — wherever UART_HandleTypeDef + MX_* live */
+
+#include <string.h>
+
+#ifndef TELEMETRY_HUART
+extern UART_HandleTypeDef huart1;
+#define TELEMETRY_HUART (&huart1)
+#endif
+
+#ifndef TELEMETRY_UART_TX_TIMEOUT_MS
+#define TELEMETRY_UART_TX_TIMEOUT_MS 100U
+#endif
+
+void Telemetry_WriteLine(const char *line)
+{
+	static const char crlf[] = "\r\n";
+	size_t len;
+
+	if (line == NULL) {
+		return;
+	}
+
+	len = strlen(line);
+	if (len > 0U) {
+		(void)HAL_UART_Transmit(TELEMETRY_HUART, (uint8_t *)line,
+			(uint16_t)len, TELEMETRY_UART_TX_TIMEOUT_MS);
+	}
+	(void)HAL_UART_Transmit(TELEMETRY_HUART, (uint8_t *)crlf, 2U,
+		TELEMETRY_UART_TX_TIMEOUT_MS);
+}
+
+#endif /* EE_TELEMETRY_USART */
