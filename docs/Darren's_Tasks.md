@@ -38,7 +38,7 @@ Historical note: early work ran against mocks and module harnesses so it would n
 - Relay simulation output adapter
 - Radar azimuth display and future radar parser interface (Task 6 stretch)
 - RD-03E ranging + registration prototype (Task 6a)
-- Command Center web dashboard (HTML mockups → wired live data; UART / Wi‑Fi/BLE)
+- Command Center / VESPER *The Last Signal* (game + HUD; UART / Wi‑Fi/BLE)
 - Enhancement integration specification and tests
 
 ### Shared only at integration
@@ -316,66 +316,72 @@ This is the safest way to progress while the STM32 baseline is unfinished.
 
 Deliverable: repeatable expected output independent of CubeIDE and hardware.
 
-## Task 8 — Command Center web dashboard ✅ mostly done
+## Task 8 — Command Center / VESPER *The Last Signal* ✅ game shipped (live board pending)
 
-Maps to enhancement **#4** (UART Command Center) and stretch **#6** (Wi‑Fi / BLE) in `Assignment2_Enhancements.md`. The matrix is the **on-drone HUD**; this is the **PC mission-control view**.
+Maps to enhancement **#4** (UART Command Center) and stretch **#6** (Wi‑Fi / BLE) in `Assignment2_Enhancements.md`. The matrix is the **on-drone HUD**; VESPER is the **PC game + mission-control view**.
 
-**Delivery shape:** a **web dashboard**, not a standalone desktop app. Fixture replay and Web Serial are implemented under `Command/src/`. Mandatory UART telemetry must keep working; wireless is an add-on, never a replacement.
+**Delivery shape:** localhost **Three.js game + HUD**, not a standalone desktop app. Sources: virtual board (`sim.js`), fixture replay, paste log, Web Serial — all through one `parser.js`. Mandatory UART telemetry must keep working; wireless is an add-on, never a replacement. Fiction (zombies, waves, kills) never feeds back into drone state.
 
-Full design notes: [`docs/Command_Center_Design.md`](Command_Center_Design.md). Quick start: [`Command/README.md`](../Command/README.md).
+Full design notes: [`docs/Command_Center_Design.md`](Command_Center_Design.md). Quick start: [`Command/README.md`](../Command/README.md). Concept microsite: [`docs/vesper-concept.html`](vesper-concept.html).
 
 ### As-built
 
 
-| Item        | Location                                                                          |
-| ----------- | --------------------------------------------------------------------------------- |
-| HTML shell  | `Command/index.html`                                                              |
-| JS modules  | `Command/src/` — bindings, parser, serial, replay, state, main                    |
-| Fixtures    | `Command/fixtures/*.log`                                                          |
-| Branding    | VESPER / Expedition control (fictional UI theme)                                  |
-| Views       | `01 Navigation` · `02 Drone systems` · `03 Captain view`                          |
-| Status      | Fixture + Web Serial wired; live board stream pending Cube USART retarget         |
+| Item        | Location                                                                                          |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| HTML shell  | `Command/index.html` — viewport, HUD cards, control deck, intro / mission-record overlays         |
+| Styles      | `Command/styles/vesper.css` (concept “// 0n” glass)                                              |
+| World       | `Command/src/world/` — environment, drone, zombies, effects, radar, audio, bloom                  |
+| JS core     | `Command/src/` — `main`, `bindings`, `parser`, `sim`, `serial`, `replay`, `state`                |
+| Fixtures    | `Command/fixtures/*.log`                                                                          |
+| Vendor      | `Command/vendor/three/` (r169 MIT) + `Command/serve.mjs`                                          |
+| Branding    | **VESPER — The Last Signal** (year 6202, NUS E4-03-07)                                          |
+| Status      | Game + virtual board ready; live board stream pending Cube USART retarget                         |
 
 
-Open locally by serving the folder (recommended) or opening the file in a browser:
+Open locally:
 
 ```bash
-# from repo root
-npx --yes serve Command
+# from repo root (preferred — zero dependency)
+node Command/serve.mjs
+# or: npx --yes serve Command
 ```
 
 ### Goal
 
-Show mode, sensors, charge, threats and critical events so markers can follow the demo even if they miss the 8×8 matrix.
+Show mode, sensors, charge, threats and critical events so markers can follow the demo even if they miss the 8×8 matrix — and make the UART stream a playable lab defence scene.
 
 ### Development / deploy model
 
 
-| Stage        | What                                                          |
-| ------------ | ------------------------------------------------------------- |
-| Design       | ✅ HTML mockup lives in `Command/`                             |
-| Annotate     | ✅ `data-cc-*` hooks on existing nodes                         |
-| Wire         | ✅ Shared JS state model + parser                              |
-| Local deploy | ✅ Serve `Command/`; Web Serial preferred; bridge stub optional |
-| Live data    | ⏳ Board USART → Web Serial (or later Wi‑Fi) → same parser     |
-| Demo         | Browser on the lab PC; Tera Term for raw line debug only      |
+| Stage        | What                                                                 |
+| ------------ | -------------------------------------------------------------------- |
+| Design       | ✅ Concept microsite + game page in `Command/`                       |
+| Wire         | ✅ Shared parser + virtual board + fixtures + Web Serial             |
+| Spectacle    | ✅ Parsed events drive lasers / meteors / crash / rescue / terminate |
+| Local deploy | ✅ `node Command/serve.mjs`; offline-friendly                        |
+| Live data    | ⏳ Board USART → Web Serial (or later Wi‑Fi) → same parser           |
+| Demo         | Browser on the lab PC; Tera Term for raw line debug only             |
 
 
-Preferred layout:
+Preferred layout (as-built):
 
 ```text
 Command/
-  index.html          # imported mockup (current)
-  src/                # bindings + state (to add)
-  bridge/             # UART/Wi-Fi → WebSocket (to add)
-  fixtures/           # recorded mission logs for mock mode (to add)
+  index.html          # game shell + HUD
+  styles/vesper.css
+  serve.mjs           # zero-dependency static server
+  vendor/three/       # three.js r169 (MIT)
+  src/                # parser, sim, bindings, world/, serial, replay
+  fixtures/           # recorded / synthetic mission logs
+  bridge/             # optional Node bridge stub
 ```
 
 Do **not** require Electron or a packaged standalone GUI.
 
-### Wire mockup → EE2028 features
+### Historical: wire mockup → EE2028 features
 
-Reuse the existing three tabs. Map fiction panels to real drone data; keep unused fiction UI as decorative unless it has a clear EE2028 meaning.
+> Superseded by the game HUD in `Command/index.html` / `bindings.js`. Kept for provenance of the old Expedition-control tabs.
 
 
 | Mockup view / node          | Existing id / region         | EE2028 feature to wire                       |
@@ -459,26 +465,24 @@ Rules:
 
 Tasks:
 
-- [x] Import HTML mockup into the repo (`Command/index.html`).
-- [ ] Agree message tags with friend (do not break compulsory formats).
-- [ ] Add `data-cc-*` hooks to the existing VESPER nodes listed above.
-- [ ] Split interactive prototype JS from live-binding JS (`Command/src/`).
-- [x] Implement JS state model + fixture/mock feeder.
-- [x] Rebuild `#devices` cards for real `T P H A G M` (or bind dedicated spans).
-- [x] Map energy core UI to laser charge / armed / fire events.
-- [x] Map `#events` + `#warningText` to attack / IR / countdown / terminate.
-- [x] Support offline replay for demo without the board (`Command/fixtures/`).
+- [x] Import / rebuild VESPER shell (`Command/index.html` + `styles/vesper.css`).
+- [x] Shared `parser.js` + `Telemetry_EVT_Contract` tags (legacy aliases accepted).
+- [x] Virtual board `sim.js` mirroring frozen `main.c` rules + `test_virtual_board.mjs`.
+- [x] Fixture replay + paste-log ingest.
 - [x] Web Serial @ 115200 8N1 (preferred live path; optional Node bridge remains a stub).
+- [x] Three.js world (`src/world/`) driven only by parsed events.
+- [x] HUD: mode, charge, mission copy, radar fiction stats, telemetry sparklines, UART log.
+- [x] Offline serve path (`node Command/serve.mjs`, vendored three.js).
 - [ ] Keep UART path working if Wi‑Fi/BLE is added later (same payload → same web UI).
 - [ ] Capture a real on-board mission log once USART retarget lands.
 
 ### Stretch: Wi‑Fi / BLE
 
-- Same `Command/` dashboard and same `EVT` / telemetry payload.
+- Same `Command/` game/HUD and same `EVT` / telemetry payload.
 - Bridge transport switches; browser UI stays identical.
 - UART remains the fallback Command Center link.
 
-Deliverable: `Command/index.html` wired into a **browser** Command Center that tracks a live or recorded EE2028 mission. Fixture + Web Serial paths are done; live board stream waits on Cube USART. See `docs/Command_Center_Design.md`.
+Deliverable: `Command/` is a **browser** Command Center / game that tracks a live, recorded, or virtual EE2028 mission. Virtual board + fixtures + Web Serial are done; live board stream waits on Cube USART. See `docs/Command_Center_Design.md`.
 
 ---
 
@@ -493,7 +497,7 @@ Only these remain blocked on Cube / hardware:
 - Replacing mandatory UART with wireless telemetry
 - UAV integration / RD-03E Tasks 6–6a
 
-Already done in source (do not re-open as blockers): GPIO aliases D2/D3/D4, thin `main.c` hooks, mode-driven adapter updates, relay on self-destruct, VESPER fixtures + Web Serial UI.
+Already done in source (do not re-open as blockers): GPIO aliases D2/D3/D4, thin `main.c` hooks, mode-driven adapter updates, relay on self-destruct, VESPER *The Last Signal* game + virtual board + fixtures + Web Serial.
 
 ---
 

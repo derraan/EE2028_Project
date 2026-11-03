@@ -1,93 +1,286 @@
 /**
- * VESPER live-binding entry — fixture replay + Web Serial share one parser.
+ * VESPER entry — one parser, four signal sources, one world.
+ *
+ *   virtual board (sim.js) ─┐
+ *   fixture replay ─────────┤
+ *   pasted UART log ────────┼─► parser.js state ─► bindings.js (HUD)
+ *   Web Serial (live) ──────┘                   └► world/ (3D) + radar + audio
+ *
+ * The world turns *new parsed events* into spectacle (laser on EVT FIRE,
+ * meteor wave on a T/A/G trip, shockwave on EVT RESCUE, blast on TERMINATE).
+ * Zombies, kills and waves are fiction and never feed back into drone state.
  */
-import { subscribe, getState, resetMission, notify } from './state.js';
-import { bindDashboard } from './bindings.js';
+import { parser, getState, resetMission, notify } from './state.js';
+import { bindHud, invalidateHud } from './bindings.js';
+import { createVirtualBoard, SIM } from './sim.js';
 import { replayFixture, stopReplay } from './replay.js';
 import { connectSerial, disconnectSerial, webSerialSupported } from './serial.js';
+import { createWorld } from './world/world.js';
+import { createRadar } from './world/radar.js';
+import { createAudio } from './world/audio.js';
 
-subscribe((s) => bindDashboard(s));
-resetMission('idle');
-notify();
+const $ = (id) => document.getElementById(id);
 
-function toast(msg) {
-  const el = document.getElementById('toast');
-  if (!el) return;
-  el.textContent = msg;
-  el.style.display = 'block';
-  clearTimeout(toast._t);
-  toast._t = setTimeout(() => {
-    el.style.display = 'none';
-  }, 3200);
+const audio = createAudio();
+const params = new URLSearchParams(location.search);
+const world = createWorld($('viewport'), { audio, adaptive: !params.has('fixedq') });
+const radar = createRadar($('radar'));
+const board = createVirtualBoard((line) => parser.pushLine(line));
+
+let source = 'simulation';
+let clock = 0;
+let previous = performance.now();
+
+// ---------------------------------------------------------------- events
+
+/** Last-seen parser counters; diffs become one-shot world events. */
+let seen = null;
+function syncSeen(state) {
+  seen = {
+    fireSeq: state.fireSeq,
+    tripSeq: state.tripSeq,
+    attackSeq: state.attackSeq,
+    rescueSeq: state.rescueSeq,
+    telemetryAt: state.telemetryAt,
+    missionEnded: state.missionEnded,
+  };
 }
 
-function ensureToolbar() {
-  let bar = document.getElementById('cc-toolbar');
-  if (bar) return bar;
-  bar = document.createElement('div');
-  bar.id = 'cc-toolbar';
-  bar.style.cssText =
-    'position:fixed;top:12px;right:12px;z-index:20;display:flex;gap:8px;flex-wrap:wrap;max-width:min(520px,96vw)';
-  bar.innerHTML = `
-    <button type="button" id="cc-replay" title="Replay Command/fixtures/mission_uart_sample.log">Replay fixture</button>
-    <button type="button" id="cc-replay-early" title="Replay early self-destruct fixture">Replay early SD</button>
-    <button type="button" id="cc-serial">${webSerialSupported() ? 'Connect serial' : 'Serial N/A'}</button>
-    <button type="button" id="cc-disconnect">Disconnect</button>
-    <button type="button" id="cc-reset">Reset state</button>
-  `;
-  document.body.appendChild(bar);
-  return bar;
+function takeEvents(state) {
+  if (!seen || state.fireSeq < seen.fireSeq || state.tripSeq < seen.tripSeq || state.attackSeq < seen.attackSeq) {
+    syncSeen(state); // a reset swapped counters back to 0 — don't replay old effects
+    world.reset();
+  }
+  const ev = {
+    fired: state.fireSeq - seen.fireSeq,
+    tripped: state.tripSeq - seen.tripSeq,
+    attacked: state.attackSeq - seen.attackSeq,
+    rescued: state.rescueSeq - seen.rescueSeq,
+    telemetry: Boolean(state.telemetryAt) && state.telemetryAt !== seen.telemetryAt,
+    terminated: state.missionEnded && !seen.missionEnded,
+  };
+  syncSeen(state);
+  return ev;
 }
 
-ensureToolbar();
+function toast(message) {
+  const el = $('toast');
+  el.textContent = message;
+  el.hidden = false;
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => {
+    el.hidden = true;
+  }, 3000);
+}
 
-document.getElementById('cc-replay')?.addEventListener('click', async () => {
+// ---------------------------------------------------------------- sources
+
+const PANELS = { simulation: 'simulationControls', replay: 'replayControls', paste: 'pastePanel', serial: 'serialControls' };
+const FRESHNESS = {
+  simulation: "Browser board prints the firmware's UART lines",
+  replay: 'Recorded fixture · no live connection',
+  paste: 'Pasted log · no live connection',
+  serial: webSerialSupported() ? 'Live UART from the B-L4S5I-IOT01A' : 'Web Serial needs Chrome or Edge',
+};
+
+async function startSource(next) {
   stopReplay();
-  try {
-    toast('Replaying mission_uart_sample.log…');
-    await replayFixture('mission_uart_sample.log', {
-      intervalMs: 100,
-      onDone: () => toast(`Replay done · mode=${getState().mode}`),
-    });
-  } catch (e) {
-    toast(String(e.message || e));
+  if (source === 'serial' && next !== 'serial') await disconnectSerial();
+  source = next;
+  $('source').value = next;
+  for (const [key, id] of Object.entries(PANELS)) $(id).hidden = key !== source;
+  $('freshness').textContent = FRESHNESS[source];
+  resetMission(source === 'simulation' ? 'sim' : 'idle');
+  if (source === 'simulation') {
+    board.reset(performance.now());
+    board.tick(performance.now());
   }
+  syncSeen(getState());
+  world.reset();
+  invalidateHud();
+  notify();
+}
+
+$('source').addEventListener('change', (event) => startSource(event.target.value));
+const restart = () => {
+  startSource(source);
+  toast('Drone rebooted. Mission reset.');
+};
+$('restart').addEventListener('click', restart);
+$('endingRestart').addEventListener('click', restart);
+
+// ---------------------------------------------------------------- virtual board controls
+
+const pb = $('pb');
+let pbHeldAt = null;
+function pbDown(event) {
+  if (source !== 'simulation' || pb.disabled) return;
+  event?.preventDefault?.();
+  audio.unlock();
+  pbHeldAt = performance.now();
+  pb.classList.add('down');
+  board.pressDown(pbHeldAt);
+}
+function pbUp() {
+  if (source !== 'simulation' || pbHeldAt === null) return;
+  pbHeldAt = null;
+  pb.classList.remove('down');
+  board.pressUp(performance.now());
+}
+pb.addEventListener('pointerdown', (event) => {
+  pb.setPointerCapture(event.pointerId);
+  pbDown(event);
+});
+pb.addEventListener('pointerup', pbUp);
+pb.addEventListener('pointercancel', pbUp);
+pb.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') event.preventDefault(); // Space is the PB key
+});
+window.addEventListener('keydown', (event) => {
+  if (event.code !== 'Space' || event.repeat || source !== 'simulation') return;
+  const t = event.target;
+  if (t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement || t instanceof HTMLInputElement) return;
+  if (!$('intro').hidden) return;
+  event.preventDefault();
+  pbDown();
+});
+window.addEventListener('keyup', (event) => {
+  if (event.code !== 'Space' || source !== 'simulation') return;
+  event.preventDefault();
+  pbUp();
 });
 
-document.getElementById('cc-replay-early')?.addEventListener('click', async () => {
-  stopReplay();
-  try {
-    toast('Replaying mission_timeout_early.log…');
-    await replayFixture('mission_timeout_early.log', {
-      intervalMs: 80,
-      onDone: () => toast(`Replay done · mode=${getState().mode}`),
-    });
-  } catch (e) {
-    toast(String(e.message || e));
-  }
+$('threat').addEventListener('click', () => {
+  audio.unlock();
+  board.disturb();
+  // In Battle the firmware ignores T/A/G — the world still drops a pod so there is something to defend against.
+  if (board.snapshot.state === 'BATTLE_MODE') world.launchWave(4);
+});
+$('overturn').addEventListener('click', () => {
+  audio.unlock();
+  board.setUpsideDown(!board.snapshot.upsideDown);
 });
 
-document.getElementById('cc-serial')?.addEventListener('click', async () => {
+// ---------------------------------------------------------------- recorded / pasted / live
+
+async function playFixture(name) {
   try {
-    stopReplay();
+    toast(`Replaying ${name}…`);
+    await replayFixture(name, { intervalMs: 380, onDone: () => toast(`Replay finished · ${getState().mode}`) });
+  } catch (error) {
+    toast(String(error.message || error));
+  }
+}
+$('replaySample').addEventListener('click', () => playFixture('mission_uart_sample.log'));
+$('replayEarly').addEventListener('click', () => playFixture('mission_timeout_early.log'));
+$('replayStop').addEventListener('click', () => stopReplay());
+
+$('ingest').addEventListener('click', () => {
+  const lines = $('uart').value.split(/\r?\n/).filter((line) => line.trim());
+  resetMission('replay');
+  invalidateHud();
+  for (const line of lines) parser.pushLine(line);
+  notify();
+  $('parseStatus').textContent = `${lines.length} lines read through the shared parser.`;
+});
+
+if (!webSerialSupported()) {
+  $('serialConnect').disabled = true;
+  $('serialHint').textContent = 'Web Serial is unavailable in this browser. Use Chrome or Edge, or replay a recorded mission.';
+}
+$('serialConnect').addEventListener('click', async () => {
+  try {
     await connectSerial(115200);
-    toast('Web Serial connected @ 115200');
-  } catch (e) {
-    toast(String(e.message || e));
+    invalidateHud();
+    toast('Board connected @ 115200');
+  } catch (error) {
+    toast(String(error.message || error));
   }
 });
-
-document.getElementById('cc-disconnect')?.addEventListener('click', async () => {
-  stopReplay();
+$('serialDisconnect').addEventListener('click', async () => {
   await disconnectSerial();
   toast('Disconnected (link loss, not TERMINATE)');
 });
 
-document.getElementById('cc-reset')?.addEventListener('click', () => {
-  stopReplay();
-  resetMission('idle');
-  notify();
-  toast('Dashboard state reset');
-});
+// ---------------------------------------------------------------- chrome
 
-bindDashboard(getState());
+$('camera').addEventListener('click', () => {
+  const mode = world.toggleCamera();
+  $('camera').textContent = mode === 'drone' ? 'Orbit cam' : 'Drone cam';
+});
+function setSound(on) {
+  audio.unlock();
+  audio.setMuted(!on);
+  $('audio').setAttribute('aria-pressed', String(on));
+  $('audio').textContent = on ? 'Sound on' : 'Sound off';
+}
+$('audio').addEventListener('click', () => setSound(audio.muted));
+$('enter').addEventListener('click', () => {
+  $('intro').hidden = true;
+  setSound(true);
+  $('viewport').querySelector('canvas')?.focus({ preventScroll: true });
+});
+audio.setMuted(true);
+
+function updateSimControls(state) {
+  const snap = board.snapshot;
+  const halted = snap.state === 'SELF_DESTRUCT_TRIGGERED' || snap.halted;
+  pb.disabled = halted;
+  pb.classList.toggle('holding', snap.holding);
+  const holdMs = pbHeldAt === null ? 0 : performance.now() - pbHeldAt;
+  const ring = Math.min(100, (holdMs / SIM.HOLD_MS) * 100);
+  pb.querySelector('circle').style.strokeDasharray = `${pbHeldAt === null ? 0 : ring} 100`;
+  const action =
+    snap.state === 'THE_LAST_OF_2028'
+      ? snap.upsideDown
+        ? 'Flip upright first'
+        : 'Double tap to rescue'
+      : snap.state === 'BATTLE_MODE'
+        ? state.armed
+          ? 'Hold to fire'
+          : 'Tap to charge'
+        : halted
+          ? 'No response'
+          : 'Double tap for Battle';
+  $('pbAction').textContent = action;
+  $('threat').disabled = halted;
+  $('overturn').disabled = halted;
+  $('overturn').textContent = snap.upsideDown ? 'Flip upright' : 'Flip upside down';
+}
+
+function updateClock() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  $('clock').textContent = `6202.${p(d.getMonth() + 1)}.${p(d.getDate())} // ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+// ---------------------------------------------------------------- loop
+
+let clockSecond = -1;
+function frame(now) {
+  const dt = Math.min(0.1, (now - previous) / 1000);
+  previous = now;
+  clock += dt;
+
+  if (source === 'simulation') board.tick(now);
+  const state = getState();
+  const ev = takeEvents(state);
+  const stats = world.update(dt, clock, { mode: state.mode, ended: state.missionEnded, selfDestructing: state.selfDestructing }, ev);
+  radar.draw(dt, stats, { alarm: state.mode === 'THE_LAST_OF_2028' || state.selfDestructing, active: !state.missionEnded });
+  if (source === 'simulation') updateSimControls(state);
+  bindHud(state, stats);
+  const second = Math.floor(Date.now() / 1000);
+  if (second !== clockSecond) {
+    clockSecond = second;
+    updateClock();
+  }
+  requestAnimationFrame(frame);
+}
+
+// Dev hooks: ?debug exposes internals on window.vesper, ?nohud hides the dashboard for clean captures.
+if (params.has('debug')) window.vesper = { world, board, parser, getState, startSource };
+if (params.has('nohud')) document.body.classList.add('nohud');
+if (params.has('play')) $('intro').hidden = true;
+
+startSource('simulation');
+requestAnimationFrame(frame);

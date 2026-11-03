@@ -75,7 +75,7 @@ Module harnesses and a UART bench live under `App/Test/`.
 
 ### VESPER Command Center — `Command/`
 
-Browser dashboard: mode, sensors, charge, countdown, event log. Same parser for **fixture replay** and **Web Serial** @ 115200 8N1.
+Browser game + dashboard (*The Last Signal* / *The Last of EE2028*, NUS E4-03-07 in year 6202): Three.js lab defence scene (spore meteors, infected, VESPER-07), full HUD, mode / sensors / charge / countdown / raw UART log. One parser for the **virtual board**, **fixture replay**, **pasted logs** and **Web Serial** @ 115200 8N1. Fiction never feeds back into drone state.
 
 ---
 
@@ -84,16 +84,17 @@ Browser dashboard: mode, sensors, charge, countdown, event log. Same parser for 
 ### A. Try VESPER with no hardware (now)
 
 ```bash
-# from repo root
-npx --yes serve Command
+# from repo root (zero dependencies, offline-friendly)
+node Command/serve.mjs
 ```
 
-Open the URL (usually `http://localhost:3000`). Use **Replay fixture** or **Replay early SD** in the toolbar.
+Open the URL (usually `http://localhost:3000`). The default **Virtual board** source behaves like the firmware (PB tap / hold, flip, disturbance); **Recorded mission** replays `Command/fixtures/*.log`.
 
 Optional parser check:
 
 ```bash
 node scripts/test_uart_parser.mjs
+node scripts/test_virtual_board.mjs
 ```
 
 More UI detail: [Command/README.md](Command/README.md).
@@ -126,7 +127,7 @@ Walk the acceptance list in Next Steps before treating the demo as done.
 ### E. Live VESPER with the board
 
 1. Close Tera Term / other apps holding the COM port.
-2. Serve `Command/` as in step A; click **Connect serial** (Chrome or Edge).
+2. Serve `Command/` as in step A; choose **Live board (Web Serial)** → **Connect board** (Chrome or Edge).
 3. To save a real mission log for replay later: [scripts/capture_uart_mission.md](scripts/capture_uart_mission.md).
 
 ---
@@ -146,9 +147,9 @@ Walk the acceptance list in Next Steps before treating the demo as done.
 ```text
 Core/          Drone state machine (main.c) + drone.h
 App/           Grove drivers, enhancements adapter, telemetry EVT, tests
-Command/       VESPER dashboard, fixtures, Web Serial
-docs/          Design notes, contracts, acceptance plan
-scripts/       Serial monitor, UART capture notes, parser smoke test
+Command/       VESPER game + HUD, virtual board, fixtures, Web Serial
+docs/          Design notes, contracts, acceptance plan, concept microsite
+scripts/       Serial monitor, UART capture notes, parser / sim smoke tests
 ```
 
 ---
@@ -158,7 +159,7 @@ scripts/       Serial monitor, UART capture notes, parser smoke test
 | Item | State |
 |------|--------|
 | Baseline + enhancement **source** | On `main` |
-| VESPER fixtures + Web Serial UI | Ready |
+| VESPER *The Last Signal* game + HUD | Ready (`Command/`; virtual board / fixtures / paste / Web Serial) |
 | CubeIDE / HAL / BSP in this checkout | **Missing** — firmware build blocked here |
 | On-board verify of full live stack | Pending Cube + wiring |
 | mmWave aim, Wi‑Fi/BLE, UAV | Stretch / docs only |
@@ -177,5 +178,7 @@ scripts/       Serial monitor, UART capture notes, parser smoke test
 | [docs/Buzzer_Design.md](docs/Buzzer_Design.md) | Buzzer patterns |
 | [docs/IR_Design.md](docs/IR_Design.md) | IR threat |
 | [docs/Relay_Design.md](docs/Relay_Design.md) | CAP_EXPLODE relay |
-| [docs/Command_Center_Design.md](docs/Command_Center_Design.md) | VESPER design |
+| [docs/Command_Center_Design.md](docs/Command_Center_Design.md) | VESPER game + dashboard design |
+| [Command/README.md](Command/README.md) | Run VESPER + event → world map |
+| [docs/vesper-concept.html](docs/vesper-concept.html) | Art-direction / mixed-reality concept microsite |
 | [docs/Darren's_Tasks.md](docs/Darren's_Tasks.md) | Work split / task status |

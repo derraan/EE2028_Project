@@ -32,6 +32,25 @@ assert(sample.telemetry.Accel[2] === 9.7, `Accel Z=${sample.telemetry.Accel[2]}`
 assert(sample.telemetry.units.P === 'hPa', 'units preserved');
 assert(sample.rawLog.some((l) => /Cheerio!/.test(l)), 'Cheerio kept in raw log');
 assert(sample.events.some((e) => /TERMINATE/.test(e.text)), 'TERMINATE in events');
+assert(sample.fireSeq === 2, `fireSeq=${sample.fireSeq}`);
+assert(sample.rescueSeq === 1, `rescueSeq=${sample.rescueSeq}`);
+assert(sample.attackSeq >= 2, `attackSeq=${sample.attackSeq}`);
+assert(sample.selfDestructing === false && sample.countdownMs === null, 'TERMINATE clears self-destruct + countdown');
+assert(sample.lineCount === sample.rawLog.length, `lineCount=${sample.lineCount}`);
+
+// T/A/G trip prose + rescue attempt prose
+{
+  const p = createParser();
+  p.pushLine('Critical T/A/G threshold violated -> Entering BATTLE MODE. (Laser Charge: 0/10)');
+  assert(p.state.mode === 'BATTLE_MODE' && p.state.tripSeq === 1, 'T/A/G trip parsed');
+  p.pushLine('EVT MODE=THE_LAST_OF_2028');
+  p.pushLine('EVT COUNTDOWN remaining_ms=10000');
+  assert(p.state.countdownAt != null, 'countdown timestamped');
+  p.pushLine('Rescue attempt 3/5 (Double Press detected)...');
+  assert(p.state.rescueAttempts === 3, `rescueAttempts=${p.state.rescueAttempts}`);
+  p.pushLine('EVT MODE=BATTLE_MODE');
+  assert(p.state.countdownMs === null && p.state.rescueAttempts === 0, 'leaving Last clears countdown/attempts');
+}
 
 const early = replayFile('Command/fixtures/mission_timeout_early.log');
 assert(early.missionEnded === true, 'early fixture terminates');

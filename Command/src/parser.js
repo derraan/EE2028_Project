@@ -32,7 +32,7 @@ export const UNITS = {
 
 export function createEmptyState() {
   return {
-    link: 'idle', // idle | uart | replay | severed
+    link: 'idle', // idle | sim | uart | replay | severed
     mode: 'STANDBY_MODE',
     missionEnded: false,
     uptimeMs: 0,
@@ -49,11 +49,24 @@ export function createEmptyState() {
     charge: 0,
     armed: false,
     countdownMs: null,
+    /** Date.now() when countdownMs was last reported (for smooth local interpolation). */
+    countdownAt: null,
     lastSelfDestructReason: null,
+    selfDestructing: false,
+    rescueAttempts: 0,
+    /** Monotonic counters so views can react to discrete events without diffing logs. */
+    fireSeq: 0,
+    attackSeq: 0,
+    tripSeq: 0,
+    rescueSeq: 0,
+    /** Date.now() of the last parsed Telemetry -> line. */
+    telemetryAt: null,
     ir: false,
     radarAz: null,
     events: [],
     rawLog: [],
+    /** Total non-empty lines ingested (rawLog is capped; this is not). */
+    lineCount: 0,
   };
 }
 
@@ -107,6 +120,7 @@ export function parseLine(state, line) {
   }
 
   state.rawLog.push(raw);
+  state.lineCount += 1;
   if (state.rawLog.length > 500) state.rawLog.shift();
 
   if (state.missionEnded) {
@@ -123,6 +137,7 @@ export function parseLine(state, line) {
     state.telemetry.Accel = [Number(sensor[4]), Number(sensor[5]), Number(sensor[6])];
     state.telemetry.Gyro = [Number(sensor[7]), Number(sensor[8]), Number(sensor[9])];
     state.telemetry.Magneto = [Number(sensor[10]), Number(sensor[11]), Number(sensor[12])];
+    state.telemetryAt = Date.now();
     // Resuming normal telemetry implies thresholds cleared unless sticky warn set.
     if (!state.thresholds.ok && state.thresholds.lines.length) {
       state.thresholds.ok = true;
@@ -151,6 +166,11 @@ export function parseLine(state, line) {
       case 'MODE': {
         const mode = normalizeMode(kv.mode || bare || rest);
         if (mode) state.mode = mode;
+        if (state.mode !== 'THE_LAST_OF_2028') {
+          state.countdownMs = null;
+          state.countdownAt = null;
+          state.rescueAttempts = 0;
+        }
         pushEvent(state, `MODE ${state.mode}`);
         return { kind: 'evt', name, mode: state.mode };
       }
@@ -163,6 +183,7 @@ export function parseLine(state, line) {
       case 'FIRE': {
         const n = parseChargeToken(kv.charge || bare || rest);
         applyCharge(state, n);
+        state.fireSeq += 1;
         pushEvent(state, `FIRE → ${state.charge}/10`);
         return { kind: 'evt', name, charge: state.charge };
       }
@@ -172,19 +193,24 @@ export function parseLine(state, line) {
         else if (kv.countdown != null) ms = Number(kv.countdown) * 1000;
         else if (bare && /^\d+$/.test(bare)) ms = Number(bare) * 1000;
         state.countdownMs = Number.isFinite(ms) ? ms : null;
+        state.countdownAt = state.countdownMs == null ? null : Date.now();
         pushEvent(state, `COUNTDOWN ${state.countdownMs ?? '?'} ms`);
         return { kind: 'evt', name, remaining_ms: state.countdownMs };
       }
       case 'SELF_DESTRUCT': {
         state.lastSelfDestructReason = kv.reason || bare || 'unknown';
+        state.selfDestructing = true;
         state.countdownMs = 0;
+        state.countdownAt = Date.now();
         pushEvent(state, `SELF_DESTRUCT ${state.lastSelfDestructReason}`);
         return { kind: 'evt', name, reason: state.lastSelfDestructReason };
       }
       case 'TERMINATE': {
         state.missionEnded = true;
         state.mode = 'TERMINATED';
+        state.selfDestructing = false;
         state.countdownMs = null;
+        state.countdownAt = null;
         pushEvent(state, 'TERMINATE');
         return { kind: 'evt', name };
       }
@@ -196,10 +222,14 @@ export function parseLine(state, line) {
       }
       case 'RESCUE': {
         state.countdownMs = null;
+        state.countdownAt = null;
+        state.rescueAttempts = 0;
+        state.rescueSeq += 1;
         pushEvent(state, 'RESCUE');
         return { kind: 'evt', name };
       }
       case 'ATTACK': {
+        state.attackSeq += 1;
         pushEvent(state, 'ATTACK');
         return { kind: 'evt', name };
       }
@@ -220,6 +250,18 @@ export function parseLine(state, line) {
   }
 
   // Human prose fallbacks (PR #3) — do not require EVT to track mode when present.
+  if (/Critical T\/A\/G threshold violated/i.test(trimmed)) {
+    state.tripSeq += 1;
+    state.mode = 'BATTLE_MODE';
+    pushEvent(state, trimmed);
+    return { kind: 'prose', mode: state.mode, trip: true };
+  }
+  const attempt = /^Rescue attempt (\d+)\s*\/\s*5/i.exec(trimmed);
+  if (attempt) {
+    state.rescueAttempts = Number(attempt[1]);
+    pushEvent(state, trimmed);
+    return { kind: 'prose', rescueAttempts: state.rescueAttempts };
+  }
   if (/Entering BATTLE MODE/i.test(trimmed) || /-> Entering BATTLE MODE/i.test(trimmed)) {
     state.mode = 'BATTLE_MODE';
     pushEvent(state, trimmed);
@@ -238,6 +280,7 @@ export function parseLine(state, line) {
   if (/Successfully reverted to Battle Mode/i.test(trimmed)) {
     state.mode = 'BATTLE_MODE';
     state.countdownMs = null;
+    state.countdownAt = null;
     pushEvent(state, trimmed);
     return { kind: 'prose', mode: state.mode };
   }
