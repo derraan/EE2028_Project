@@ -6,11 +6,11 @@ Task 3 implementation for the Grove buzzer enhancement.
 
 ## Context
 
-From [docs/Darren's_Tasks.md](Darren's_Tasks.md) Task 3 and [docs/Assignment2_Enhancements.md](Assignment2_Enhancements.md), the buzzer needs six behaviours: threat chirp, laser-fire, 2 Hz LAST_OF_2028 warning, accelerating countdown beeps, final burst, then silence. Same style as Task 2: pure logic, `Buzzer_Update(now_ms)`, no `HAL_Delay`.
+From [docs/Darren's_Tasks.md](Darren's_Tasks.md) Task 3 and [docs/Assignment2_Enhancements.md](Assignment2_Enhancements.md), the buzzer needs six behaviours: threat chirp, laser-fire, 2 Hz THE_LAST_OF_2028 warning, accelerating countdown beeps, final burst, then silence. Same style as Task 2: pure logic, `Buzzer_Update(now_ms)`, no `HAL_Delay`.
 
-Hardware facts:
+Hardware facts (board of record **B-L4S5I-IOT01A**):
 
-- Buzzer on **D2 = PD14** (`ARD_D2_Pin` / `ARD_D2_GPIO_Port` in the lab `main.h`).
+- Buzzer on **Arduino D2 = PD14** (`ARD_D2_Pin` / `ARD_D2_GPIO_Port` in the lab Cube `main.h` / B-L4S5I-IOT01A `.ioc`).
 - CubeMX configures PD14 as an **EXTI rising input**; the test harness re-inits it as push-pull output (USER CODE / `Buzzer_Test_Init`), default LOW. No `.ioc` edit.
 - **Hardware confirmed active** (fixed pitch). Patterns are ON/OFF rhythms only. PWM/`TIM4_CH3` is not used.
 
@@ -19,7 +19,7 @@ Hardware facts:
 - Non-blocking pattern engine driven by `Buzzer_Update(now_ms)`.
 - Enum + switch-case based mode handling.
 - Hardware-neutral tone backend callback.
-- Active Grove buzzer on `ARD_D2` (`PD14`) — no PWM / pitch control.
+- Active Grove buzzer on `ARD_D2` (**PD14** on B-L4S5I-IOT01A) — no PWM / pitch control.
 
 ## Files
 

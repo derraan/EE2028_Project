@@ -134,7 +134,7 @@ Build a non-blocking display arbiter on top of the Task 1 driver (`App/Inc/ht16k
 ```mermaid
 flowchart TD
   A["StatusDisplay_Update(now_ms)"] --> P1["1. Explosion / terminal blank"]
-  P1 --> P2["2. LAST_OF_2028 countdown + repeating text"]
+  P1 --> P2["2. THE_LAST_OF_2028 countdown + repeating text"]
   P2 --> P3["3. One-time BATTLE MODE scroll"]
   P3 --> P4["4. Armed full-matrix flash"]
   P4 --> P5["5. Charge bar (0-10 to 8 cols)"]
@@ -159,7 +159,7 @@ typedef enum {
     STATUS_SCREEN_CHARGE,       /* 0-10 progress bar */
     STATUS_SCREEN_ARMED,        /* full-matrix flash */
     STATUS_SCREEN_BATTLE_TEXT,  /* one-shot BATTLE MODE scroll */
-    STATUS_SCREEN_LAST_2028,    /* repeating LAST OF 2028 + countdown */
+    STATUS_SCREEN_LAST_2028,    /* repeating THE LAST OF EE2028 + countdown */
     STATUS_SCREEN_EXPLOSION     /* explosion frame then blank */
 } StatusScreen_t;
 
@@ -217,7 +217,7 @@ void StatusDisplay_Test_Update(uint32_t now_ms);
 - **Armed flash:** toggle full `0xFF`/`0x00` using `now_ms`.
 - **Radar azimuth:** single vertical line at column `azimuth` (all 8 rows set in that column).
 - **BATTLE MODE scroll:** scroll once left-to-right; when `scroll_col` passes end, clear `battle_active`, resume lower-priority screen.
-- **LAST OF 2028:** scroll text repeatedly; overlay/alternate with countdown digits `9..0` derived from `countdown_start_ms` (1 s/step). At 0 → auto `explosion_active`.
+- **THE LAST OF EE2028:** scroll text repeatedly; overlay/alternate with countdown digits `9..0` derived from `countdown_start_ms` (1 s/step). At 0 → auto `explosion_active`.
 - **Explosion:** show expanding/explosion frame, then set `terminated` and render blank.
 - **Compact font:** column-encoded glyph table (each char = up to 6 columns, 8 rows). Characters needed: `A B D E F L M O S T` + space + digits `0-9`.
 - **Redraw policy:** only call `HT16K33_WriteFrame` when the computed frame changes or on an animation tick, to avoid I2C spam.
@@ -236,14 +236,14 @@ Planned menu keys:
 - `r` : cycle azimuth 0..7 then off
 - `f` : toggle armed flash
 - `b` : BATTLE MODE one-shot scroll
-- `l` : enter LAST OF 2028 (text + 10 s countdown)
+- `l` : enter THE LAST OF EE2028 (text + 10 s countdown)
 - `z` : rescue (cancel countdown → battle)
 - `x` : trigger explosion now
 - `0` : reset to standby/blank
 - `s` : run full auto sequence
 - `h` : reprint menu
 
-The auto sequence (`s`) is an internal mini state machine stepped by `now_ms`: charge ramp → armed flash → BATTLE scroll → radar sweep → enter LAST OF 2028 → countdown → explosion → blank → idle.
+The auto sequence (`s`) is an internal mini state machine stepped by `now_ms`: charge ramp → armed flash → BATTLE scroll → radar sweep → enter THE LAST OF EE2028 → countdown → explosion → blank → idle.
 
 ## Integration (lab project)
 
@@ -257,7 +257,7 @@ The auto sequence (`s`) is an internal mini state machine stepped by `now_ms`: c
 - [x] Full-matrix armed flashing
 - [x] Radar azimuth → column 0-7 (+ optional dial)
 - [x] Scroll BATTLE MODE once on entry
-- [x] Repeating LAST OF EE2028 text
+- [x] Repeating THE LAST OF EE2028 text
 - [x] Countdown 10→0 with progressive flash
 - [x] Explosion frame then blank
 - [x] Compact 8×8 font, required chars only
@@ -315,18 +315,18 @@ Extra vs original plan API:
 Still resolved in `ResolveScreen()`:
 
 1. Explosion / terminal blank  
-2. LAST_OF_2028 sequence  
+2. THE_LAST_OF_2028 sequence  
 3. One-time BATTLE MODE scroll  
 4. Armed flash  
 5. Charge bar  
 6. Radar (line or dial)  
 7. Blank  
 
-Mode enum name remains **`LAST_OF_2028`** (not any `TEST_OF_*` variant).
+Mode enum name remains **`THE_LAST_OF_2028`** (not any `TEST_OF_*` variant).
 
-## 3.5 LAST OF EE2028 sequence (tuned)
+## 3.5 THE LAST OF EE2028 sequence (tuned)
 
-Banner string is **`LAST OF EE2028`** (not `LAST OF 2028`).
+Banner string is **`THE LAST OF EE2028`** (not `LAST OF EE2028` / `LAST OF 2028`).
 
 On `StatusDisplay_EnterLastOf2028()`:
 
@@ -352,7 +352,7 @@ Rescue (`z`) cancels last/countdown/explosion and re-enters battle scroll.
 |--------|----------|-------|
 | Default / unused general scroll step | `STATUS_SCROLL_STEP_MS` | 120 ms |
 | BATTLE MODE scroll step | `STATUS_BATTLE_SCROLL_MS` | 50 ms |
-| LAST OF EE2028 banner scroll step | `STATUS_LAST_SCROLL_MS` | 50 ms |
+| THE LAST OF EE2028 banner scroll step | `STATUS_LAST_SCROLL_MS` | 50 ms |
 | Countdown duration (10..0) | `STATUS_COUNTDOWN_MS` | 11000 ms |
 | Countdown flash half-period at 0 | `STATUS_COUNTDOWN_FLASH_MIN_MS` | 40 ms |
 | Countdown flash half-period step | `STATUS_COUNTDOWN_FLASH_STEP_MS` | 45 ms × val |
@@ -375,7 +375,7 @@ API: `StatusDisplay_SetRadarStyle(h, STATUS_RADAR_LINE | STATUS_RADAR_DIAL)`.
 
 ## 3.8 Font
 
-Column-encoded glyphs for: space, `0–9`, `A B D E F L M O S T` (enough for `BATTLE MODE` and `LAST OF EE2028`).
+Column-encoded glyphs for: space, `0–9`, `A B D E F H L M O S T` (enough for `BATTLE MODE` and `THE LAST OF EE2028`).
 
 Scrolling builds an 8-column window via `TextColumn` / `Draw_Column`, then packs into row-major `frame[8]`.
 
@@ -390,8 +390,8 @@ Serial: ST-LINK VCP, typically **COM6 @ 115200**. Helper: `scripts/serial_monito
 | `d` | Toggle radar dial ↔ line (clears charge/armed so radar is visible) |
 | `f` | Toggle armed flash |
 | `b` | BATTLE MODE one-shot scroll |
-| `l` | LAST OF EE2028 (10 s banner → 10..0 flashing countdown → boom) |
-| `z` | Rescue from LAST_OF_2028 |
+| `l` | THE LAST OF EE2028 (10 s banner → 10..0 flashing countdown → boom) |
+| `z` | Rescue from THE_LAST_OF_2028 |
 | `x` | Trigger explosion now |
 | `0` | Reset display state |
 | `s` | Full auto sequence |
@@ -411,4 +411,4 @@ Auto sequence (`s`): charge ramp → armed → battle → radar sweep → last (
 - Enhancement modules stay out of friend’s CubeMX-owned files where possible; sync copies into the lab Core tree for bring-up.
 - Display failures must not block mandatory drone logic once integrated.
 - Frame buffer stays HAL-independent (`uint8_t[8]`) so PC-side unit tests remain possible.
-- Naming: third drone mode is **`LAST_OF_2028`** / `Handle_Last_Of_2028_Mode` / “Last of 2028” in prose; matrix banner text may still read `LAST OF EE2028`.
+- Naming: third drone mode is **`THE_LAST_OF_2028`** / `Handle_The_Last_Of_2028_Mode` / “The Last of EE2028” in prose; matrix banner text is `THE LAST OF EE2028`.

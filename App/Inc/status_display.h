@@ -33,6 +33,10 @@ typedef struct {
     uint8_t countdown_val;
     uint32_t countdown_start_ms;
 
+    /* Live build: remaining time comes from the drone rescue deadline. */
+    uint8_t use_external_remaining;
+    uint32_t rescue_remaining_ms;
+
     uint8_t explosion_active;
     uint32_t explosion_start_ms;
     uint8_t terminated;
@@ -51,6 +55,13 @@ void StatusDisplay_SetRadarStyle(StatusDisplay_HandleTypeDef *h, StatusRadarStyl
 
 void StatusDisplay_EnterBattle(StatusDisplay_HandleTypeDef *h);
 void StatusDisplay_EnterLastOf2028(StatusDisplay_HandleTypeDef *h);
+/**
+ * Drive THE_LAST_OF_2028 digits from the drone's rescue deadline.
+ * Enables external-clock mode (skips the internal 10 s banner + 11 s timer;
+ * explosion is triggered only via StatusDisplay_TriggerExplosion).
+ */
+void StatusDisplay_SetRescueRemainingMs(StatusDisplay_HandleTypeDef *h,
+                                        uint32_t remaining_ms);
 void StatusDisplay_Rescue(StatusDisplay_HandleTypeDef *h);
 void StatusDisplay_TriggerExplosion(StatusDisplay_HandleTypeDef *h);
 void StatusDisplay_Reset(StatusDisplay_HandleTypeDef *h);

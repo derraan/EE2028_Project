@@ -26,7 +26,7 @@ High-impact extras for the spaceship drone, biased toward **hardware we already 
 | **What** | One 8×8 display presents every main feature: charge state, armed state, radar azimuth, mode changes and self-destruct countdown |
 | **Charging** | Fill a 0–8 column progress bar. Once fully charged / armed, flash the full matrix until fired |
 | **Radar** | Draw a moving vertical line whose horizontal position represents target azimuth from left to right |
-| **Mode text** | Scroll `BATTLE MODE` once when Battle begins. Scroll `THE LAST OF EE2028` repeatedly for the whole THE_LAST_OF_EE2028 mode |
+| **Mode text** | Scroll `BATTLE MODE` once when Battle begins. Scroll `THE LAST OF EE2028` repeatedly for the whole THE_LAST_OF_2028 mode |
 | **Countdown** | During the final 10 seconds, show `9` through `0` (or a shrinking bar). At `0`, display an explosion frame and then blank the matrix |
 | **Hooks** | A single non-blocking display controller selects the highest-priority screen and redraws from `HAL_GetTick()` |
 | **Effort** | Medium (HT16K33 I2C, scrolling text/font, bitmaps and display arbitration) |
@@ -36,13 +36,13 @@ High-impact extras for the spaceship drone, biased toward **hardware we already 
 Only one image fits on an 8×8 matrix, so use this priority:
 
 1. Explosion frame / shutdown
-2. THE_LAST_OF_EE2028 countdown and repeating text
+2. THE_LAST_OF_2028 countdown and repeating text
 3. One-time `BATTLE MODE` transition text
 4. Armed flashing
 5. Charging progress
 6. Radar azimuth line
 
-Mode text temporarily interrupts the normal screen. Radar tracking resumes after `BATTLE MODE` finishes scrolling. In THE_LAST_OF_EE2028, the repeating warning and countdown override radar and charging.
+Mode text temporarily interrupts the normal screen. Radar tracking resumes after `BATTLE MODE` finishes scrolling. In THE_LAST_OF_2028, the repeating warning and countdown override radar and charging.
 
 ### 2. IR threat / “zombie” detect
 | | |
@@ -52,7 +52,7 @@ Mode text temporarily interrupts the normal screen. Radar tracking resumes after
 | **Hooks** | Flag in `Read_Sensors()`; debounce + check IR polarity |
 | **Effort** | Low–medium |
 
-### 3. Richer THE_LAST_OF_EE2028 / capacitor explode
+### 3. Richer THE_LAST_OF_2028 / capacitor explode
 | | |
 |--|--|
 | **What** | Start a 10-second countdown on entry. Scroll `THE LAST OF EE2028` repeatedly, accelerate the buzzer beeps as `0` approaches, then show the explosion at `0` |
@@ -62,8 +62,6 @@ Mode text temporarily interrupts the normal screen. Radar tracking resumes after
 | **Effort** | Low–medium |
 
 The GPIO drives the relay module's control input, not a relay coil directly. The relay must switch only a safe, instructor-approved low-voltage simulation load. Do not rupture, short or overcharge a physical capacitor.
-
-Implementation: [docs/Relay_Design.md](Relay_Design.md) — `CAP_EXPLODE` on Arduino **D4 / PA3**, latched HIGH at boom, LOW on rescue/init.
 
 ### 4. Simple Command Center (UART)
 | | |
@@ -92,7 +90,7 @@ Implementation: [docs/Relay_Design.md](Relay_Design.md) — `CAP_EXPLODE` on Ard
 |--|--|
 | **What** | Same mission data as #4, over on-kit **Wi‑Fi** and/or **BLE** to a phone or laptop Command Center |
 | **Why** | Wireless “mission control”; no USB tether during demo |
-| **Hardware** | B-L475E-IOT01A Wi‑Fi (ISM43362) / BLE, or B-U585I-IOT02A Wi‑Fi + BLE |
+| **Hardware** | B-L4S5I-IOT01A Wi‑Fi (ISM43362) / BLE (board of record); B-U585I-IOT02A is an alternate kit family |
 | **Hooks** | Reuse telemetry framing from `Send_Telemetry()`; send mode, T/P/H/A/G/M, charge, IR/mmWave events, aim angles |
 | **Effort** | Medium–high (stack + reconnect + keep UART as fallback) |
 
@@ -106,7 +104,7 @@ Implementation: [docs/Relay_Design.md](Relay_Design.md) — `CAP_EXPLODE` on Ard
 | **What** | Put the system on (or beside) a real **UAV**: either STM32 as companion computer talking to a flight controller, or a small quad carrying the Discovery for a staged “spaceship drone” demo |
 | **Why** | Capstone story — the platform is actually a drone |
 | **Approaches** | (A) Companion UART/MAVLink to Pixhawk-class FC — STM32 does modes / sensors / aim, FC flies; (B) Tiny toy quad with Discovery strapped for static/slow demo; (C) Ground “UAV lite” rover if flight is blocked by lab rules |
-| **Hooks** | Arm/disarm tied to Standby vs Battle; THE_LAST_OF_EE2028 → RTL or land; explode = motors cut + telemetry silence (safe fail) |
+| **Hooks** | Arm/disarm tied to Standby vs Battle; THE_LAST_OF_2028 → RTL or land; explode = motors cut + telemetry silence (safe fail) |
 | **Effort** | Very high (power, weight, crash risk, flight time) |
 | **Note** | Ship **#1–#4** solid first; treat UAV as the **final** stretch after mmWave aim + wireless telemetry |
 
@@ -117,7 +115,7 @@ Implementation: [docs/Relay_Design.md](Relay_Design.md) — `CAP_EXPLODE` on Ard
 | Idea | Notes | Effort |
 |------|--------|--------|
 | **IR as soft “projectile”** | In Battle, IR trip while charged = fire (same as #1–2) | Low |
-| **Shake / impact hit** | On-kit accel spike → THE_LAST_OF_EE2028 | Low |
+| **Shake / impact hit** | On-kit accel spike → THE_LAST_OF_2028 | Low |
 
 ---
 
@@ -143,19 +141,19 @@ Implementation: [docs/Relay_Design.md](Relay_Design.md) — `CAP_EXPLODE` on Ard
 8. Phone/laptop gets live Wi‑Fi or BLE telemetry
 
 **Final (#7):**  
-9. UAV armed in Battle; modes drive companion behaviour; safe land / cut on THE_LAST_OF_EE2028 or explode
+9. UAV armed in Battle; modes drive companion behaviour; safe land / cut on THE_LAST_OF_2028 or explode
 
 ---
 
 ## Discovery kit map (basics + hooks)
 
-Typical course board: **B-L475E-IOT01A** (or **B-U585I-IOT02A**).
+Board of record: **B-L4S5I-IOT01A** (PR #3 BSP `B-L4S5I-IOT01` / `stm32l4s5i_iot01*`).
 
 | Variable / feature | Hardware |
 |--------------------|----------|
 | `T`, `H` | HTS221 |
 | `P` | LPS22HB (U5: LPS22HH) |
-| `A`, `G` | LSM6DSL (U5: ISM330DHCX) — upside-down → THE_LAST_OF_EE2028 |
+| `A`, `G` | LSM6DSL (U5: ISM330DHCX) — upside-down → THE_LAST_OF_2028 |
 | `M` | LIS3MDL (U5: IIS2MDCTR) |
 | Mode LED / PB | On-kit LD + B1 (EXTI) |
 | UART Command Center (#4) | ST-LINK Virtual COM |
@@ -174,7 +172,7 @@ Typical course board: **B-L475E-IOT01A** (or **B-U585I-IOT02A**).
 
 The **entire #1–#7 scope is not realistically achievable and demo-stable** in that time. The basic firmware plus **#1–#4** is realistic. One advanced feature may be attempted only after the core demo is stable.
 
-- **High feasibility:** basic state machine and sensors; matrix HUD; IR trigger; buzzer effects; THE_LAST_OF_EE2028 sequence; UART telemetry.
+- **High feasibility:** basic state machine and sensors; matrix HUD; IR trigger; buzzer effects; THE_LAST_OF_2028 sequence; UART telemetry.
 - **Medium feasibility:** Wi‑Fi **or** BLE telemetry, provided the board support package and examples work quickly.
 - **Low feasibility:** mmWave tracking plus calibrated 2‑DOF auto-aim. The radar driver, target coordinates, servo mapping, mechanics and power supply create several integration risks.
 - **Very low feasibility:** a safe, reliable flying UAV integration. Flight-controller communication, mounting, weight, power, testing and safety can consume the whole project window.
@@ -191,7 +189,7 @@ The **entire #1–#7 scope is not realistically achievable and demo-stable** in 
 - **Days 1–3 — Student A:** state machine, PB timing, UART and sensor reads.
 - **Days 1–3 — Student B:** verify matrix, IR and buzzer separately with minimal test programs.
 - **Days 4–6 — Both:** integrate matrix HUD, charge/fire effects and IR threat trigger.
-- **Days 7–8 — Both:** implement and test THE_LAST_OF_EE2028 rescue/timeout/explode behavior.
+- **Days 7–8 — Both:** implement and test THE_LAST_OF_2028 rescue/timeout/explode behavior.
 - **Days 9–10 — Student A:** telemetry and Command Center output.
 - **Days 9–10 — Student B:** wiring cleanup, non-blocking timing and hardware reliability tests.
 - **Days 11–12 — Both:** end-to-end integration, edge cases and repeatable demo script.

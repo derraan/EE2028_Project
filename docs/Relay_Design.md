@@ -6,7 +6,7 @@ Task 5 implementation for the simulated capacitor blow-up enhancement (relay-mod
 
 ## Context
 
-From [docs/Darren's_Tasks.md](Darren's_Tasks.md) Task 5 and [docs/Assignment2_Enhancements.md](Assignment2_Enhancements.md) enhancement **#3** (richer LAST_OF_2028 / capacitor explode):
+From [docs/Darren's_Tasks.md](Darren's_Tasks.md) Task 5 and [docs/Assignment2_Enhancements.md](Assignment2_Enhancements.md) enhancement **#3** (richer THE_LAST_OF_2028 / capacitor explode):
 
 - At countdown `0` (or manual explosion), set `CAP_EXPLODE_Pin` **HIGH**
 - Drive only a **relay module control input**, never a bare coil
@@ -19,9 +19,10 @@ Same style as Task 2–4: pure logic, tick-driven `RelayEffect_Update(now_ms)`, 
 ## Hardware facts
 
 - Signal name: `CAP_EXPLODE` (aliases `ARD_D4` in the test harness)
-- Board pin: Arduino **D4 = PA3** (`ARD_D4_Pin` / `ARD_D4_GPIO_Port` on B-L475E-IOT01A)
+- Board of record: **B-L4S5I-IOT01A**
+- Board pin: Arduino **D4 = PA3** (`ARD_D4_Pin` / `ARD_D4_GPIO_Port` in the lab Cube `main.h` / B-L4S5I-IOT01A `.ioc`)
 - Mode: push-pull output, default **LOW**
-- Neighbouring Arduino digital usage: **D2** = buzzer, **D3** = IR — D4 is the next free Grove/Arduino digital
+- Neighbouring Arduino digital usage: **D2** = buzzer (PD14), **D3** = IR (PB0) — D4 is the next free Grove/Arduino digital
 - CubeMX often already lists `ARD_D4` as an output; the harness re-inits it and writes LOW **before** `HAL_GPIO_Init` so reset cannot glitch HIGH
 
 ## Scope
@@ -132,7 +133,7 @@ Automatic hooks:
 
 - `StatusDisplay_Test_Update()` key routing order: **relay** → IR → buzzer (single UART owner).
 - `Relay_Test_Update(now_ms)` runs once per loop tick (needed only if `pulse_ms > 0`).
-- Mandatory LAST_OF_2028 termination in `main.c` should call the same Trigger/Reset contract **after** Checkpoint B; do not merge into CubeMX-owned files early.
+- Mandatory THE_LAST_OF_2028 termination in `main.c` should call the same Trigger/Reset contract **after** Checkpoint B; do not merge into CubeMX-owned files early.
 - Pair with matrix explosion frame + buzzer `FINAL_BURST` for the full demo effect.
 
 ## Lab sync (CubeIDE project)

@@ -1,0 +1,53 @@
+# Synthetic UART mission fixture for VESPER replay (no board required).
+# Lines starting with # are comments and must be ignored by the feeder.
+# Format matches docs/Telemetry_EVT_Contract.md + PR #3 sensor layout.
+
+Drone initialized: Entering STANDBY MODE (Laser Charge: 0/10)
+EVT MODE=STANDBY_MODE
+Telemetry -> T:26.4 °C, P:1012.5 hPa, H:55.1 % | Accel:[0.0, 0.1, 9.8] m/s^2 | Gyro:[0.0, 0.0, 0.2] dps | Magneto:[31.0, 42.0, 18.0] mgauss
+Telemetry -> T:26.5 °C, P:1012.4 hPa, H:55.0 % | Accel:[0.1, 0.0, 9.7] m/s^2 | Gyro:[0.1, 0.0, 0.1] dps | Magneto:[30.5, 41.8, 18.2] mgauss
+PB Double Press (Standby) -> Entering BATTLE MODE. (Laser Charge: 0/10)
+EVT MODE=BATTLE_MODE
+Laser recharging... Current charge: 3/10
+EVT CHARGE=3/10
+Laser recharging... Current charge: 6/10
+EVT CHARGE=6/10
+Laser gun fired continuously! PEW PEW! (Remaining charge: 1/10)
+EVT FIRE charge=1/10
+Laser charge too low (1/10) to fire! Please single-press to recharge the laser gun.
+Laser recharging... Current charge: 4/10
+EVT CHARGE=4/10
+Laser recharging... Current charge: 7/10
+EVT CHARGE=7/10
+Drone is upside down! Entering THE LAST OF EE2028.
+EVT MODE=THE_LAST_OF_2028
+Drone was attacked!
+EVT ATTACK
+EVT COUNTDOWN remaining_ms=9000
+Drone was attacked!
+EVT ATTACK
+EVT COUNTDOWN remaining_ms=8000
+Drone was attacked!
+EVT COUNTDOWN remaining_ms=7000
+Rescue attempt 1/5 (Double Press detected)...
+Drone is still upside down! Flip upright and double press to rescue.
+EVT COUNTDOWN remaining_ms=5000
+PB Rescue Action: Successfully reverted to Battle Mode.
+EVT RESCUE
+EVT MODE=BATTLE_MODE
+Laser recharging... Current charge: 10/10
+EVT CHARGE=10/10
+Laser gun fired continuously! PEW PEW! (Remaining charge: 5/10)
+EVT FIRE charge=5/10
+Drone is upside down! Entering THE LAST OF EE2028.
+EVT MODE=THE_LAST_OF_2028
+EVT COUNTDOWN remaining_ms=10000
+Drone was attacked!
+EVT COUNTDOWN remaining_ms=5000
+Drone was attacked!
+EVT COUNTDOWN remaining_ms=1000
+10s elapsed without rescue! Drone self-destructing...
+EVT SELF_DESTRUCT reason=timeout
+Drone has made a noble sacrifice for mankind...
+EVT TERMINATE
+Cheerio!

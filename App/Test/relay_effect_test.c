@@ -3,9 +3,9 @@
 #include <string.h>
 
 /*
- * Simulated capacitor blow-up: CAP_EXPLODE on Arduino D4 (PA3).
+ * Simulated capacitor blow-up: CAP_EXPLODE on Arduino D4 (PA3 on B-L4S5I-IOT01A).
  * Drives a relay-module control input HIGH at explosion; stays LOW otherwise.
- * D2 = buzzer, D3 = IR — D4 is the next free Grove/Arduino digital.
+ * D2 = buzzer (PD14), D3 = IR (PB0) — D4 is the next free Grove/Arduino digital.
  */
 #ifndef CAP_EXPLODE_Pin
 #define CAP_EXPLODE_Pin       ARD_D4_Pin

@@ -145,7 +145,7 @@ The drone has no on-screen menu UI in this basic build; **mode + laser + rescue 
                                      │   charge ≥5  → hint only
                                      │
         accel upside-down (not PB)   ▼
-                             THE_LAST_OF_EE2028
+                             THE_LAST_OF_2028
                                      │
                  double short        │
             ┌────────────────────────┤
@@ -166,7 +166,7 @@ The drone has no on-screen menu UI in this basic build; **mode + laser + rescue 
 |------|--------------|--------------|----------------|
 | **STANDBY_MODE** | Ignored | → `BATTLE_MODE` | Ignored (no fire) |
 | **BATTLE_MODE** | Recharge +3 if charge &lt; 5/10; else print hold/double hint | → `STANDBY_MODE` | Full-auto laser while held |
-| **THE_LAST_OF_EE2028** | Ignored | Rescue attempt / rescue / explode path | Ignored for laser |
+| **THE_LAST_OF_2028** | Ignored | Rescue attempt / rescue / explode path | Ignored for laser |
 | **SELF_DESTRUCT_*** | Ignored | Ignored | Ignored |
 
 ### Battle fire (hold path only)

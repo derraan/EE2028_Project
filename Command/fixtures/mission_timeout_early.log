@@ -1,0 +1,9 @@
+# Early self-destruct via rescue-limit path (synthetic).
+EVT MODE=STANDBY_MODE
+Telemetry -> T:25.0 °C, P:1010.0 hPa, H:50.0 % | Accel:[0.0, 0.0, 9.8] m/s^2 | Gyro:[0.0, 0.0, 0.0] dps | Magneto:[20.0, 20.0, 20.0] mgauss
+EVT MODE=BATTLE_MODE
+EVT MODE=THE_LAST_OF_2028
+EVT COUNTDOWN remaining_ms=8000
+EVT SELF_DESTRUCT reason=rescue_limit
+EVT TERMINATE
+Cheerio!

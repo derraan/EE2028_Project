@@ -18,7 +18,7 @@ The 8×8 matrix remains the **on-drone HUD** ([LED_Matrix_Design.md](LED_Matrix_
 
 Give markers a clear live view of:
 
-- Drone mode (`STANDBY` / `BATTLE` / `LAST_OF_2028`)
+- Drone mode (`STANDBY` / `BATTLE` / `THE_LAST_OF_2028`)
 - Six-sensor telemetry with units
 - Threshold status
 - Laser charge / armed / fire
@@ -136,7 +136,7 @@ Current behaviour is **fiction telemetry only**. Autopilot, map route, lidar car
 |-----|-------------------|------------|
 | Navigation | Sector map, corridor, ETA, uplink notice | Optional threat/radar story; decorative until stretch |
 | Drone systems | Schematic, device cards, energy core, diagnostics, event stream | **Primary** telemetry / charge / events |
-| Captain view | Pilot HUD, mode, thrust, advisory | **Primary** mode / LAST_OF_2028 / alerts |
+| Captain view | Pilot HUD, mode, thrust, advisory | **Primary** mode / THE_LAST_OF_2028 / alerts |
 
 ---
 
@@ -148,7 +148,7 @@ Useful ids / regions already in the mockup:
 |--------|------------|---------------------|
 | `.online` | “UPLINK ESTABLISHED” | Link: UART / Wi‑Fi / severed |
 | `#clock` | UTC clock | Host clock or mission uptime |
-| `#mode` | “Manual standby” | `STANDBY` / `BATTLE` / `LAST_OF_2028` |
+| `#mode` | “Manual standby” | `STANDBY` / `BATTLE` / `THE_LAST_OF_2028` |
 | `#flightState` | HUD flight state text | Same mode (or countdown overlay) |
 | ENERGY CORE `%` + `.bar i` | Fake 87% quantum cell | Laser charge `n/10` + bar width |
 | `#temp` | Core temperature | Sensor `T` (°C) |
@@ -202,7 +202,7 @@ Add attributes **without** discarding VESPER styling. Prefer hooks on existing n
 | `data-cc-event-log` | Mode + `EVT` history (newest first) |
 | `data-cc-alert` | Attack / IR / advisory |
 | `data-cc-ir` / `data-cc-radar-az` | Enhancement adapters |
-| `data-cc-countdown` | `EVT COUNTDOWN=` during LAST_OF_2028 |
+| `data-cc-countdown` | `EVT COUNTDOWN=` during THE_LAST_OF_2028 |
 
 ---
 
@@ -210,7 +210,7 @@ Add attributes **without** discarding VESPER styling. Prefer hooks on existing n
 
 - **Standby:** steady mint / calm header.
 - **Battle:** emphasize weapons/charge; optional 1 Hz pulse on mode badge.
-- **LAST_OF_2028:** orange warning path; 2 Hz cue; countdown visible in captain HUD.
+- **THE_LAST_OF_2028:** orange warning path; 2 Hz cue; countdown visible in captain HUD.
 - **Threshold trip:** `#diagnostics` shows violation text; sensor cards highlight until all recover.
 - **Terminate:** uplink → severed; freeze `#events`; stop accepting new live frames.
 - Keep fiction map/autopilot only if it does not override or contradict live state.
@@ -234,24 +234,28 @@ G:12.50 dps, exceeds threshold of 8.00 dps.
 
 ### Enhancement event tags
 
+Canonical contract: [`Telemetry_EVT_Contract.md`](Telemetry_EVT_Contract.md). Implemented parser: `Command/src/parser.js`.
+
 ```text
-EVT MODE=LAST_OF_2028
+EVT MODE=STANDBY_MODE | BATTLE_MODE | THE_LAST_OF_2028
 EVT ATTACK
 EVT CHARGE=6/10
 EVT FIRE charge=1/10
 EVT IR=1
 EVT RADAR az=3
-EVT COUNTDOWN=7
+EVT COUNTDOWN remaining_ms=9000
 EVT RESCUE
+EVT SELF_DESTRUCT reason=timeout|rescue_limit|early
+EVT THRESHOLD_OK
 EVT TERMINATE
 ```
 
 Parser rules:
 
-- Ignore unknown lines.
-- Tolerant whitespace / casing where practical.
-- After `EVT TERMINATE`, mark mission ended and stop expecting data.
-- Same payload must work over UART today and Wi‑Fi/BLE later.
+- Buffer to newline; keep unrecognized text in the raw log.
+- Tolerant whitespace / casing where practical; accept legacy `THE_LAST_OF_EE2028`.
+- Cable disconnect = link loss; `EVT TERMINATE` = mission end (still read `Cheerio!`).
+- Same parser for live UART and `Command/fixtures/*.log` replay.
 
 ---
 
@@ -288,7 +292,7 @@ Suggested browser state object:
 ```js
 {
   link: "uart" | "wifi" | "ble" | "severed",
-  mode: "STANDBY" | "BATTLE" | "LAST_OF_2028" | "TERMINATED",
+  mode: "STANDBY" | "BATTLE" | "THE_LAST_OF_2028" | "TERMINATED",
   uptimeMs: 0,
   telemetry: { T, P, H, A, G, M, units: {...} },
   thresholds: { ok: true, lines: [] },
@@ -306,15 +310,15 @@ Suggested browser state object:
 ## 10) Implementation checklist
 
 - [x] Place mockup at `Command/index.html`
-- [ ] Agree `EVT` tags with teammate (no breakage of compulsory UART)
-- [ ] Add `data-cc-*` attributes to the nodes in §6
-- [ ] Extract live-binding JS into `Command/src/` (leave decorative prototype JS isolated)
-- [ ] Implement state model + fixture replay
-- [ ] Rebuild `#devices` for real sensors (or dedicated spans)
-- [ ] Wire energy core UI to charge / armed / fire
-- [ ] Wire `#events`, `#warningText`, countdown, terminate
-- [ ] Implement UART bridge → WebSocket/SSE
-- [ ] Demo offline replay without the board
+- [x] Agree `EVT` tags with teammate (no breakage of compulsory UART) — see Telemetry_EVT_Contract.md
+- [x] Add `data-cc-*` attributes to the nodes in §6
+- [x] Extract live-binding JS into `Command/src/` (leave decorative prototype JS isolated)
+- [x] Implement state model + fixture replay
+- [x] Rebuild `#devices` for real sensors (or dedicated spans)
+- [x] Wire energy core UI to charge / armed / fire
+- [x] Wire `#events`, `#warningText`, countdown, terminate
+- [ ] Implement UART bridge → WebSocket/SSE (optional; Web Serial preferred — stub in `Command/bridge/`)
+- [x] Demo offline replay without the board
 - [ ] Keep UART path when adding Wi‑Fi/BLE
 
 ---
@@ -341,7 +345,7 @@ Suggested browser state object:
 Task 8 is done when:
 
 1. `Command/index.html` opens via a local static server.
-2. Mock/fixture mode exercises Standby → Battle → charge/fire → LAST_OF_2028 → rescue/terminate.
+2. Mock/fixture mode exercises Standby → Battle → charge/fire → THE_LAST_OF_2028 → rescue/terminate.
 3. Live UART bridge updates the same bindings.
 4. Compulsory telemetry lines still make sense in a raw serial terminal.
 5. Docs in this file match the as-built bind hooks.

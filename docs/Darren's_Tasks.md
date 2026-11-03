@@ -61,7 +61,7 @@ typedef enum {
     DRONE_EVENT_NONE,
     DRONE_EVENT_ENTER_STANDBY,
     DRONE_EVENT_ENTER_BATTLE,
-    DRONE_EVENT_ENTER_LAST_OF_2028,
+    DRONE_EVENT_ENTER_THE_LAST_OF_2028,
     DRONE_EVENT_CHARGE_CHANGED,
     DRONE_EVENT_LASER_FIRED,
     DRONE_EVENT_RADAR_AZIMUTH,
@@ -123,7 +123,7 @@ Implement:
 - [x] Full-matrix armed flashing.
 - [x] Radar azimuth mapped to matrix column 0–7 (plus optional 180° dial style).
 - [x] Scrolling `BATTLE MODE` once on mode entry.
-- [x] Repeating `LAST OF EE2028` banner text.
+- [x] Repeating `THE LAST OF EE2028` banner text.
 - [x] Countdown digits 10→0 with progressive flash toward 0.
 - [x] Explosion frame followed by blank display.
 - [x] Compact 8×8 font containing only required characters.
@@ -131,7 +131,7 @@ Implement:
 Display priority:
 
 1. Explosion / terminal blank
-2. LAST_OF_2028 countdown and warning
+2. THE_LAST_OF_2028 countdown and warning
 3. One-time `BATTLE MODE`
 4. Armed flash
 5. Charge bar
@@ -153,7 +153,7 @@ Tasks:
 - [x] Define a hardware-neutral backend callback (`set_tone(ctx, on, freq_hz)`).
 - [x] Implement short threat chirp.
 - [x] Implement laser-fire tone.
-- [x] Implement 2 Hz LAST_OF_2028 warning.
+- [x] Implement 2 Hz THE_LAST_OF_2028 warning.
 - [x] Implement accelerating countdown beeps.
 - [x] Implement final burst and silence.
 - [x] Ensure `Buzzer_Update(now_ms)` is non-blocking.
@@ -181,7 +181,7 @@ Tasks:
 
 Hardware notes:
 
-- Grove Infrared Reflective Sensor on **D3** (`ARD_D3_Pin` / `ARD_D3_GPIO_Port`, PB0 mapping on Discovery).
+- Grove Infrared Reflective Sensor on **D3** (`ARD_D3_Pin` / `ARD_D3_GPIO_Port`, **PB0** on **B-L4S5I-IOT01A**).
 - Digital mode, input pull-up in test harness.
 - Active level confirmed working with default **active-LOW** (`active_level=0`).
 - Baseline timing defaults: `debounce_ms=30`, `rearm_ms=300`.
@@ -208,8 +208,8 @@ Tasks:
 
 Hardware notes:
 
-- `CAP_EXPLODE` on **D4** (`ARD_D4_Pin` / `ARD_D4_GPIO_Port`, **PA3** on B-L475E-IOT01A).
-- D2 = buzzer, D3 = IR; D4 is the next free Arduino digital.
+- `CAP_EXPLODE` on **D4** (`ARD_D4_Pin` / `ARD_D4_GPIO_Port`, **PA3** on **B-L4S5I-IOT01A**).
+- D2 = buzzer (PD14), D3 = IR (PB0); D4 is the next free Arduino digital.
 - Push-pull output, written LOW before `HAL_GPIO_Init` to avoid a HIGH glitch.
 - Status display rising edge of `explosion_active` → `Relay_Test_OnExplosion()`; rescue/`0` → LOW.
 
@@ -315,8 +315,8 @@ This is the safest way to progress while the STM32 baseline is unfinished.
 - [ ] Build a small C test harness (or Python model) that injects events and simulated milliseconds.
 - [ ] Exercise Standby → Battle message → charging → armed → fire.
 - [ ] Exercise radar azimuth while Battle is active.
-- [ ] Exercise LAST_OF_2028 warning → countdown → rescue.
-- [ ] Exercise LAST_OF_2028 warning → countdown → termination.
+- [ ] Exercise THE_LAST_OF_2028 warning → countdown → rescue.
+- [ ] Exercise THE_LAST_OF_2028 warning → countdown → termination.
 - [ ] Verify display priority when events overlap.
 - [ ] Capture expected timelines for later on-board regression tests.
 
@@ -386,7 +386,7 @@ Reuse the existing three tabs. Map fiction panels to real drone data; keep unuse
 | --------------------------- | ---------------------------- | -------------------------------------------- |
 | Header uplink               | `.online`                    | Link state: UART / Wi‑Fi / severed           |
 | Header clock                | `#clock`                     | Host clock or mission uptime                 |
-| Captain · mode              | `#mode`, `#flightState`      | `STANDBY` / `BATTLE` / `LAST_OF_2028`        |
+| Captain · mode              | `#mode`, `#flightState`      | `STANDBY` / `BATTLE` / `THE_LAST_OF_2028`        |
 | Systems · energy bar        | `.bar i` under ENERGY CORE   | Laser charge 0–10 (width %)                  |
 | Systems · energy %          | Quantum cell `<strong>`      | Charge text `n/10` + armed cue               |
 | Systems · temp              | `#temp`                      | Temperature `T` (°C)                         |
@@ -394,7 +394,7 @@ Reuse the existing three tabs. Map fiction panels to real drone data; keep unuse
 | Systems · event stream      | `#events`                    | Mission event log (`EVT …`)                  |
 | Systems · diagnostics       | `#diagnostics`               | Threshold summary / ALL OK vs violations     |
 | Captain · advisory          | `#warningText`               | Attack / IR threat / threshold alert text    |
-| Captain · HUD label         | `.hudtext` / `#flightState`  | Mode + countdown when in LAST_OF_2028        |
+| Captain · HUD label         | `.hudtext` / `#flightState`  | Mode + countdown when in THE_LAST_OF_2028        |
 | Navigation · hazards        | `#hazards`, notice panels    | Optional IR / radar threat cue               |
 | Navigation · route / marker | `#routePath`, `#droneMarker` | Optional radar azimuth / aim story (stretch) |
 
@@ -420,9 +420,9 @@ Suggested `data-cc-*` hooks to add on top of current markup (do not rip out VESP
 
 ### Visual rules
 
-- Mode colours: Standby = steady, Battle = mint / 1 Hz cue, LAST_OF_2028 = orange warning / 2 Hz alarm (toggle CSS classes from JS).
+- Mode colours: Standby = steady, Battle = mint / 1 Hz cue, THE_LAST_OF_2028 = orange warning / 2 Hz alarm (toggle CSS classes from JS).
 - Threshold violation: update `#diagnostics` and highlight sensor cards until all recover.
-- LAST_OF_2028: show countdown in captain HUD; at 0 mark terminated, freeze `#events`, set uplink to severed.
+- THE_LAST_OF_2028: show countdown in captain HUD; at 0 mark terminated, freeze `#events`, set uplink to severed.
 - Prefer browser deploy; keep fiction map/autopilot demo only if it does not fight live telemetry.
 
 ### UART message contract (bridge parser)
@@ -441,7 +441,7 @@ T: 26.40 C, P: 101.25 kPa, H: 55.10 %RH, A: 0.98 g, G: 2.10 dps, M: 42.00 uT
 G:12.50 dps, exceeds threshold of 8.00 dps.
 
 # Enhancement events (parseable tags)
-EVT MODE=LAST_OF_2028
+EVT MODE=THE_LAST_OF_2028
 EVT ATTACK
 EVT CHARGE=6/10
 EVT FIRE charge=1/10

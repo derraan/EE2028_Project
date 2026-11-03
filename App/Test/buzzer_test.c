@@ -80,7 +80,7 @@ void Buzzer_Test_PrintMenu(void)
     UartPrint("t : tone probe (ON for 1s)\r\n");
     UartPrint("c : threat chirp\r\n");
     UartPrint("f : laser fire tone\r\n");
-    UartPrint("w : LAST_OF_2028 warning (2Hz)\r\n");
+    UartPrint("w : THE_LAST_OF_2028 warning (2Hz)\r\n");
     UartPrint("k : countdown beeps 10..0\r\n");
     UartPrint("x : final burst + latched silence\r\n");
     UartPrint("z : stop buzzer / rescue\r\n");

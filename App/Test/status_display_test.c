@@ -41,8 +41,8 @@ static void PrintMenu(void)
     UartPrint("d : toggle radar dial (vs line), keep azimuth\r\n");
     UartPrint("f : toggle armed flash\r\n");
     UartPrint("b : BATTLE MODE one-shot scroll\r\n");
-    UartPrint("l : LAST OF EE2028 (10s banner, 10..0 flash, boom)\r\n");
-    UartPrint("z : rescue from LAST OF 2028\r\n");
+    UartPrint("l : THE LAST OF EE2028 (10s banner, 10..0 flash, boom)\r\n");
+    UartPrint("z : rescue from THE LAST OF EE2028\r\n");
     UartPrint("x : trigger explosion now\r\n");
     UartPrint("0 : reset display state\r\n");
     UartPrint("s : run full auto sequence\r\n");

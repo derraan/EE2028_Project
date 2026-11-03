@@ -19,7 +19,8 @@ Like Task 2/3, the module is non-blocking and tick-driven (`IR_Update(now_ms)`),
 
 - Module: Grove Infrared Reflective Sensor
 - Output type: digital
-- Board pin: Arduino D3 (Discovery mapping expected as `ARD_D3_Pin`/`ARD_D3_GPIO_Port`)
+- Board of record: **B-L4S5I-IOT01A**
+- Board pin: Arduino **D3 = PB0** (`ARD_D3_Pin` / `ARD_D3_GPIO_Port` in the lab Cube `main.h` / B-L4S5I-IOT01A `.ioc`)
 - Test harness mode: input + pull-up
 - Active polarity: configurable (`active_level`); **confirmed active-LOW (`0`)** on this Grove module
 

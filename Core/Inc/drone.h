@@ -18,21 +18,21 @@
 #define THRESHOLD_G 1.5f
 #endif
 
+/*
+ * Canonical mode enum shared by the baseline state machine and the
+ * enhancements adapter. PR #3 gameplay (hold-to-fire, sensor Battle entry,
+ * 10 s / 5-failed-rescue self-destruct) lives in Core/Src/main.c.
+ */
 typedef enum {
-    STANDBY_MODE,
+    STANDBY_MODE = 0,
     BATTLE_MODE,
-    THE_LAST_OF_EE2028
+    THE_LAST_OF_2028,
+    SELF_DESTRUCT_TRIGGERED,
+    SELF_DESTRUCT_DEAD
 } DroneState_t;
 
-void SystemClock_Config(void);
-void MX_GPIO_Init(void);
-void MX_UART_Init(void);
-void Read_Sensors(void);
-void Send_Telemetry(void);
-void Send_Threshold_Warnings(void);
-void Handle_Standby_Mode(void);
-void Handle_Battle_Mode(void);
-void Handle_The_Last_Of_EE2028_Mode(void);
-uint8_t G_is_upside_down(void);
+#ifndef RESCUE_TIMEOUT_MS
+#define RESCUE_TIMEOUT_MS 10000U
+#endif
 
 #endif /* DRONE_H */

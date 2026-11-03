@@ -6,6 +6,8 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "drone.h"
+#include "telemetry_evt.h"
 #include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01.h"
 #include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01_accelero.h"
 #include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01_tsensor.h"
@@ -15,6 +17,18 @@
 #include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01_psensor.h"
 #include <stdio.h>
 #include <stdbool.h>
+#include <string.h>
+
+#if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
+#include "enhancements.h"
+#include "enhancements_hw.h"
+/* When CubeMX generates I2C for the HT16K33, declare the handle here, e.g.:
+ *   extern I2C_HandleTypeDef hi2c2;
+ * and pass &hi2c2 to Enhancements_HW_Setup. NULL skips the matrix safely. */
+#ifndef EE_MATRIX_I2C
+#define EE_MATRIX_I2C NULL
+#endif
+#endif
 
 extern void initialise_monitor_handles(void); /* for semi-hosting support (printf) */
 
@@ -32,18 +46,12 @@ extern void initialise_monitor_handles(void); /* for semi-hosting support (print
 #define PB_HOLD_MS               500U
 #define PB_FIRE_PERIOD_MS        500U
 #define ATTACK_MSG_PERIOD_MS     1000U
+#ifndef RESCUE_TIMEOUT_MS
 #define RESCUE_TIMEOUT_MS        10000U /* 10s without rescue → self-destruct */
+#endif
 #define RESCUE_ATTEMPT_LIMIT     5
 
-/* Define states */
-typedef enum {
-	STANDBY_MODE,
-	BATTLE_MODE,
-	THE_LAST_OF_EE2028,
-	SELF_DESTRUCT_TRIGGERED,
-	SELF_DESTRUCT_DEAD
-} DroneState_t;
-
+/* DroneState_t comes from drone.h (shared with the enhancements adapter). */
 DroneState_t current_state = STANDBY_MODE;
 
 /*
@@ -67,7 +75,7 @@ uint32_t pb_single_deadline_tick = 0;
 uint32_t pb_last_short_press_tick = 0;
 
 float current_accel_z = 0.0f;
-int the_last_of_ee2028_rescue_attempts = 0;
+int the_last_of_2028_rescue_attempts = 0;
 
 /* Laser Gun Energy Tracking (Initialized to 10/10 full charge, remembers last charge) */
 int laser_charge = 10;
@@ -76,7 +84,7 @@ int laser_charge = 10;
 uint32_t tick_1s_telemetry = 0;
 uint32_t tick_1s_attack_msg = 0;
 uint32_t led_blink_tick = 0;
-uint32_t the_last_of_ee2028_entry_tick = 0;
+uint32_t the_last_of_2028_entry_tick = 0;
 uint32_t noble_sacrifice_tick = 0;
 bool sacrifice_sent = false;
 bool cheerio_sent = false;
@@ -87,8 +95,12 @@ void Process_PushButton(void);
 void PB_OnDoublePress(void);
 void PB_OnSinglePress(void);
 void PB_CancelPendingSingle(void);
-void Enter_The_Last_Of_EE2028(void);
+void Enter_The_Last_Of_2028(void);
 void Enter_Self_Destruct(const char *reason);
+#if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
+static void Fill_DroneStatus(DroneStatus_t *out);
+static void Enhancements_Tick(void);
+#endif
 
 int main(void)
 {
@@ -110,7 +122,17 @@ int main(void)
 	BSP_MAGNETO_Init();
 	BSP_PSENSOR_Init();
 
+#if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
+	{
+		Enhancements_Config_t ee_cfg;
+		(void)Enhancements_HW_Setup(&ee_cfg, EE_MATRIX_I2C);
+		Enhancements_Init(&ee_cfg);
+	}
+#endif
+
 	printf("Drone initialized: Entering STANDBY MODE (Laser Charge: %d/10)\n", laser_charge);
+	Telemetry_EvtMode(EVT_MODE_STANDBY);
+	Telemetry_EvtCharge((uint8_t)laser_charge);
 
 	while (1)
 	{
@@ -143,7 +165,7 @@ int main(void)
 		/* --- Global Check for "The Last of EE2028" (Upside Down) --- */
 		if ((current_state == STANDBY_MODE || current_state == BATTLE_MODE) && accel_data[2] < -4.0f)
 		{
-			Enter_The_Last_Of_EE2028();
+			Enter_The_Last_Of_2028();
 		}
 
 		/* --- Push button: EXTI edges + GPIO level hold/release --- */
@@ -170,6 +192,7 @@ int main(void)
 						led_blink_tick = HAL_GetTick();
 						PB_CancelPendingSingle();
 						printf("Critical T/A/G threshold violated -> Entering BATTLE MODE. (Laser Charge: %d/10)\r\n", laser_charge);
+						Telemetry_EvtMode(EVT_MODE_BATTLE);
 					}
 					else if (any_exceeded) {
 						if ((HAL_GetTick() - tick_1s_telemetry) >= 1000) {
@@ -211,6 +234,10 @@ int main(void)
 						pb_last_fire_tick = HAL_GetTick();
 						laser_charge -= 5;
 						printf("Laser gun fired continuously! PEW PEW! (Remaining charge: %d/10)\r\n", laser_charge);
+						Telemetry_EvtFire((uint8_t)laser_charge); /* charge AFTER the shot */
+#if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
+						Enhancements_OnEvent(DRONE_EVENT_LASER_FIRED, HAL_GetTick());
+#endif
 						if (laser_charge < 5) {
 							printf("Laser charge too low (%d/10) to fire! Please single-press to recharge the laser gun.\r\n", laser_charge);
 							pb_low_charge_warned = true;
@@ -219,7 +246,7 @@ int main(void)
 				}
 				break;
 
-			case THE_LAST_OF_EE2028:
+			case THE_LAST_OF_2028:
 				/* LED blinking at 2 Hz (toggle every 250ms) */
 				if ((HAL_GetTick() - led_blink_tick) >= 250) {
 					led_blink_tick = HAL_GetTick();
@@ -228,12 +255,18 @@ int main(void)
 
 				/* Alert once per second (informational only — does not trigger self-destruct) */
 				if ((HAL_GetTick() - tick_1s_attack_msg) >= ATTACK_MSG_PERIOD_MS) {
+					uint32_t elapsed;
+					uint32_t remaining;
 					tick_1s_attack_msg = HAL_GetTick();
 					printf("Drone was attacked!\r\n");
+					Telemetry_EvtAttack();
+					elapsed = HAL_GetTick() - the_last_of_2028_entry_tick;
+					remaining = (elapsed >= RESCUE_TIMEOUT_MS) ? 0U : (RESCUE_TIMEOUT_MS - elapsed);
+					Telemetry_EvtCountdown(remaining);
 				}
 
 				/* Self-destruct: 10s without rescue, or 5 failed upside-down rescues (whichever earlier) */
-				if ((HAL_GetTick() - the_last_of_ee2028_entry_tick) >= RESCUE_TIMEOUT_MS) {
+				if ((HAL_GetTick() - the_last_of_2028_entry_tick) >= RESCUE_TIMEOUT_MS) {
 					Enter_Self_Destruct("10s elapsed without rescue");
 				}
 				break;
@@ -246,6 +279,7 @@ int main(void)
 				}
 
 				if (sacrifice_sent && !cheerio_sent && (HAL_GetTick() - noble_sacrifice_tick) >= 1000) {
+					Telemetry_EvtTerminate(); /* immediately before Cheerio! */
 					printf("Cheerio!\r\n");
 					cheerio_sent = true;
 					current_state = SELF_DESTRUCT_DEAD;
@@ -254,12 +288,30 @@ int main(void)
 
 			case SELF_DESTRUCT_DEAD:
 				BSP_LED_Off(LED2);
+#if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
+				/* Bounded final-effects phase before permanent halt. */
+				{
+					DroneStatus_t st;
+					uint32_t now;
+					Fill_DroneStatus(&st);
+					do {
+						now = HAL_GetTick();
+						Fill_DroneStatus(&st);
+						Enhancements_Update(&st, now);
+						HAL_Delay(10);
+					} while (Enhancements_FinalEffectsDone(now) == 0U);
+					Enhancements_Shutdown();
+				}
+#endif
 				while (1) {
 					/* Permanent self-destruct halt */
 				}
 				break;
 		}
 
+#if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
+		Enhancements_Tick();
+#endif
 		HAL_Delay(10);
 	}
 }
@@ -363,18 +415,20 @@ void PB_OnDoublePress(void)
 		current_state = BATTLE_MODE;
 		led_blink_tick = HAL_GetTick();
 		printf("PB Double Press (Standby) -> Entering BATTLE MODE. (Laser Charge: %d/10)\r\n", laser_charge);
+		Telemetry_EvtMode(EVT_MODE_BATTLE);
 	}
 	else if (current_state == BATTLE_MODE) {
 		current_state = STANDBY_MODE;
 		BSP_LED_On(LED2);
 		printf("PB Double Press (Battle) -> Returning to STANDBY MODE. (Laser Charge: %d/10)\r\n", laser_charge);
+		Telemetry_EvtMode(EVT_MODE_STANDBY);
 	}
-	else if (current_state == THE_LAST_OF_EE2028) {
-		the_last_of_ee2028_rescue_attempts++;
-		printf("Rescue attempt %d/5 (Double Press detected)...\r\n", the_last_of_ee2028_rescue_attempts);
+	else if (current_state == THE_LAST_OF_2028) {
+		the_last_of_2028_rescue_attempts++;
+		printf("Rescue attempt %d/5 (Double Press detected)...\r\n", the_last_of_2028_rescue_attempts);
 
 		if (current_accel_z < -4.0f) {
-			if (the_last_of_ee2028_rescue_attempts >= RESCUE_ATTEMPT_LIMIT) {
+			if (the_last_of_2028_rescue_attempts >= RESCUE_ATTEMPT_LIMIT) {
 				Enter_Self_Destruct("5 rescue attempts failed while upside down");
 			}
 			else {
@@ -384,8 +438,10 @@ void PB_OnDoublePress(void)
 		else {
 			current_state = BATTLE_MODE;
 			led_blink_tick = HAL_GetTick();
-			the_last_of_ee2028_rescue_attempts = 0;
+			the_last_of_2028_rescue_attempts = 0;
 			printf("PB Rescue Action: Successfully reverted to Battle Mode.\r\n");
+			Telemetry_EvtRescue();
+			Telemetry_EvtMode(EVT_MODE_BATTLE);
 		}
 	}
 }
@@ -393,7 +449,7 @@ void PB_OnDoublePress(void)
 void PB_OnSinglePress(void)
 {
 	if (current_state != BATTLE_MODE) {
-		return; /* Standby / THE_LAST_OF_EE2028: single presses ignored */
+		return; /* Standby / THE_LAST_OF_2028: single presses ignored */
 	}
 
 	if (laser_charge < 5) {
@@ -402,36 +458,86 @@ void PB_OnSinglePress(void)
 			laser_charge = 10;
 		}
 		printf("Laser recharging... Current charge: %d/10\r\n", laser_charge);
+		Telemetry_EvtCharge((uint8_t)laser_charge);
 	}
 	else {
 		printf("Laser charge is already sufficient (>=5/10). Hold button >500ms to fire! Or double-press within 500ms to return to standby mode\r\n");
 	}
 }
 
-void Enter_The_Last_Of_EE2028(void)
+void Enter_The_Last_Of_2028(void)
 {
-	current_state = THE_LAST_OF_EE2028;
-	the_last_of_ee2028_entry_tick = HAL_GetTick();
+	current_state = THE_LAST_OF_2028;
+	the_last_of_2028_entry_tick = HAL_GetTick();
 	tick_1s_attack_msg = HAL_GetTick();
 	led_blink_tick = HAL_GetTick();
-	the_last_of_ee2028_rescue_attempts = 0;
+	the_last_of_2028_rescue_attempts = 0;
 	PB_CancelPendingSingle();
 	pb_last_short_press_tick = 0;
 	printf("Drone is upside down! Entering THE LAST OF EE2028.\r\n");
+	Telemetry_EvtMode(EVT_MODE_THE_LAST_OF_2028);
+	Telemetry_EvtCountdown(RESCUE_TIMEOUT_MS);
 }
 
 void Enter_Self_Destruct(const char *reason)
 {
+	const char *reason_token = EVT_REASON_TIMEOUT;
+
 	if (current_state == SELF_DESTRUCT_TRIGGERED || current_state == SELF_DESTRUCT_DEAD) {
 		return;
 	}
 	printf("%s! Drone self-destructing...\r\n", reason);
+	/* Map human reason → EVT token (avoid matching "without rescue" as rescue_limit). */
+	if (reason != NULL && strstr(reason, "rescue attempts") != NULL) {
+		reason_token = EVT_REASON_RESCUE_LIMIT;
+	}
+	Telemetry_EvtSelfDestruct(reason_token);
 	current_state = SELF_DESTRUCT_TRIGGERED;
 	sacrifice_sent = false;
 	cheerio_sent = false;
-	the_last_of_ee2028_rescue_attempts = 0;
+	the_last_of_2028_rescue_attempts = 0;
 	PB_CancelPendingSingle();
+#if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
+	/* Both timeout and fifth failed rescue converge here — emit once. */
+	Enhancements_OnEvent(DRONE_EVENT_SELF_DESTRUCT_STARTED, HAL_GetTick());
+#endif
 }
+
+#if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
+static void Fill_DroneStatus(DroneStatus_t *out)
+{
+	uint32_t now;
+	uint32_t elapsed;
+
+	if (out == NULL) {
+		return;
+	}
+
+	now = HAL_GetTick();
+	out->mode = current_state;
+	out->charge = (laser_charge < 0) ? 0U :
+	              (laser_charge > 10) ? 10U : (uint8_t)laser_charge;
+	/* Armed = Battle with enough charge to fire (PR #3 hold-to-fire rule). */
+	out->armed = ((current_state == BATTLE_MODE) && (laser_charge >= 5)) ? 1U : 0U;
+	out->rescue_remaining_ms = 0U;
+
+	if (current_state == THE_LAST_OF_2028) {
+		elapsed = now - the_last_of_2028_entry_tick;
+		if (elapsed >= RESCUE_TIMEOUT_MS) {
+			out->rescue_remaining_ms = 0U;
+		} else {
+			out->rescue_remaining_ms = RESCUE_TIMEOUT_MS - elapsed;
+		}
+	}
+}
+
+static void Enhancements_Tick(void)
+{
+	DroneStatus_t st;
+	Fill_DroneStatus(&st);
+	Enhancements_Update(&st, HAL_GetTick());
+}
+#endif
 
 /* --- Threshold Warning Logging Function --- */
 void Check_And_Log_Thresholds(float t, float p, float h, float a[3], float g[3], float m[3])

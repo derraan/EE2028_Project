@@ -35,6 +35,7 @@ static const Glyph_t kGlyphs[] = {
     {'D', 5U, {0x7FU, 0x41U, 0x41U, 0x22U, 0x1CU, 0x00U}},
     {'E', 5U, {0x7FU, 0x49U, 0x49U, 0x49U, 0x41U, 0x00U}},
     {'F', 5U, {0x7FU, 0x09U, 0x09U, 0x09U, 0x01U, 0x00U}},
+    {'H', 5U, {0x7FU, 0x08U, 0x08U, 0x08U, 0x7FU, 0x00U}},
     {'L', 5U, {0x7FU, 0x40U, 0x40U, 0x40U, 0x40U, 0x00U}},
     {'M', 5U, {0x7FU, 0x02U, 0x04U, 0x02U, 0x7FU, 0x00U}},
     {'O', 5U, {0x3EU, 0x41U, 0x41U, 0x41U, 0x3EU, 0x00U}},
@@ -48,7 +49,7 @@ static const uint8_t kExplosionFrames[][8] = {
 };
 
 static const char kBattleText[] = "BATTLE MODE";
-static const char kLastText[] = "LAST OF EE2028";
+static const char kLastText[] = "THE LAST OF EE2028";
 
 static void Frame_Clear(uint8_t frame[8])
 {
@@ -314,6 +315,8 @@ void StatusDisplay_Init(StatusDisplay_HandleTypeDef *h, HT16K33_HandleTypeDef *d
     h->countdown_on = 0U;
     h->countdown_val = 10U;
     h->countdown_start_ms = 0U;
+    h->use_external_remaining = 0U;
+    h->rescue_remaining_ms = 0U;
     h->explosion_active = 0U;
     h->explosion_start_ms = 0U;
     h->terminated = 0U;
@@ -379,11 +382,42 @@ void StatusDisplay_EnterLastOf2028(StatusDisplay_HandleTypeDef *h)
         return;
     }
     h->last_active = 1U;
-    h->countdown_on = 0U;       /* banner phase first */
+    h->countdown_on = 0U;       /* banner phase first (bench / internal clock) */
     h->countdown_val = 10U;
     h->countdown_start_ms = 0U;
+    h->use_external_remaining = 0U;
+    h->rescue_remaining_ms = 0U;
     h->scroll_col = 0U;
     h->dirty = 1U;
+}
+
+void StatusDisplay_SetRescueRemainingMs(StatusDisplay_HandleTypeDef *h,
+                                        uint32_t remaining_ms)
+{
+    uint8_t next_val;
+
+    if (h == NULL) {
+        return;
+    }
+
+    h->use_external_remaining = 1U;
+    h->rescue_remaining_ms = remaining_ms;
+    h->last_active = 1U;
+    h->countdown_on = 1U; /* digits driven by drone clock */
+
+    if (remaining_ms == 0U) {
+        next_val = 0U;
+    } else {
+        next_val = (uint8_t)((remaining_ms + 999U) / 1000U);
+        if (next_val > 10U) {
+            next_val = 10U;
+        }
+    }
+
+    if (next_val != h->countdown_val) {
+        h->countdown_val = next_val;
+        h->dirty = 1U;
+    }
 }
 
 void StatusDisplay_Rescue(StatusDisplay_HandleTypeDef *h)
@@ -393,6 +427,8 @@ void StatusDisplay_Rescue(StatusDisplay_HandleTypeDef *h)
     }
     h->last_active = 0U;
     h->countdown_on = 0U;
+    h->use_external_remaining = 0U;
+    h->rescue_remaining_ms = 0U;
     h->explosion_active = 0U;
     h->terminated = 0U;
     h->dirty = 1U;
@@ -437,30 +473,38 @@ HAL_StatusTypeDef StatusDisplay_Update(StatusDisplay_HandleTypeDef *h, uint32_t 
     }
 
     if (h->last_active != 0U) {
-        if (h->countdown_start_ms == 0U) {
-            h->countdown_start_ms = now_ms;
-        }
-        elapsed_ms = now_ms - h->countdown_start_ms;
-
-        if (h->countdown_on == 0U) {
-            /* Phase 1: rolling LAST OF EE2028 banner for 10 s */
-            if (elapsed_ms >= STATUS_LAST_BANNER_MS) {
-                h->countdown_on = 1U;
-                h->countdown_start_ms = now_ms;
-                h->countdown_val = 10U;
-                h->scroll_col = 0U;
-                h->dirty = 1U;
-            }
+        if (h->use_external_remaining != 0U) {
+            /*
+             * Live path: digit value set by StatusDisplay_SetRescueRemainingMs.
+             * Do not self-explode — DRONE_EVENT_SELF_DESTRUCT_STARTED owns that.
+             */
+            (void)elapsed_ms;
         } else {
-            /* Phase 2: digits 10..0 (11 s), flash faster toward 0, then boom */
-            if (elapsed_ms >= STATUS_COUNTDOWN_MS) {
-                h->countdown_val = 0U;
-                StatusDisplay_TriggerExplosion(h);
-            } else {
-                uint8_t next_val = (uint8_t)(10U - (elapsed_ms / 1000U));
-                if (next_val != h->countdown_val) {
-                    h->countdown_val = next_val;
+            if (h->countdown_start_ms == 0U) {
+                h->countdown_start_ms = now_ms;
+            }
+            elapsed_ms = now_ms - h->countdown_start_ms;
+
+            if (h->countdown_on == 0U) {
+                /* Phase 1: rolling THE LAST OF EE2028 banner for 10 s */
+                if (elapsed_ms >= STATUS_LAST_BANNER_MS) {
+                    h->countdown_on = 1U;
+                    h->countdown_start_ms = now_ms;
+                    h->countdown_val = 10U;
+                    h->scroll_col = 0U;
                     h->dirty = 1U;
+                }
+            } else {
+                /* Phase 2: digits 10..0 (11 s), flash faster toward 0, then boom */
+                if (elapsed_ms >= STATUS_COUNTDOWN_MS) {
+                    h->countdown_val = 0U;
+                    StatusDisplay_TriggerExplosion(h);
+                } else {
+                    uint8_t next_val = (uint8_t)(10U - (elapsed_ms / 1000U));
+                    if (next_val != h->countdown_val) {
+                        h->countdown_val = next_val;
+                        h->dirty = 1U;
+                    }
                 }
             }
         }
