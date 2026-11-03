@@ -11,6 +11,7 @@ Sources:
 3. As-built UI: [Command/index.html](../Command/index.html) + [Command/src/](../Command/src/) + [Command/fixtures/](../Command/fixtures/)
 4. Wire contract: [Telemetry_EVT_Contract.md](Telemetry_EVT_Contract.md)
 5. Quick start: [Command/README.md](../Command/README.md)
+6. Concept microsite (art direction): [vesper-concept.html](vesper-concept.html)
 
 The 8×8 matrix remains the **on-drone HUD** ([LED_Matrix_Design.md](LED_Matrix_Design.md)). This document is the **PC browser dashboard**.
 
@@ -126,8 +127,9 @@ Command/
 Serve the UI:
 
 ```bash
-# from repo root
-npx --yes serve Command
+# from repo root (preferred)
+node Command/serve.mjs
+# or: npx --yes serve Command
 ```
 
 Then open the printed local URL (typically `http://localhost:3000`).

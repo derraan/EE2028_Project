@@ -66,13 +66,13 @@ Mode text temporarily interrupts the normal screen. Radar tracking resumes after
 
 The GPIO drives the relay module's control input, not a relay coil directly. The relay must switch only a safe, instructor-approved low-voltage simulation load. Do not rupture, short or overcharge a physical capacitor.
 
-### 4. Simple Command Center (UART) — **implemented (VESPER)**
+### 4. Simple Command Center (UART) — **implemented (VESPER *The Last Signal*)**
 | | |
 |--|--|
-| **What** | Local web dashboard: mode, sensors, charge, events (fire / countdown / terminate); fixture replay + Web Serial |
-| **Why** | Markers see state even if they miss the matrix; pairs with HUD |
-| **Hooks** | `telemetry_evt.*` + [`Command/`](../Command/README.md); contract in [`Telemetry_EVT_Contract.md`](Telemetry_EVT_Contract.md) |
-| **Effort** | Low if text-only; medium if a small dashboard UI |
+| **What** | Localhost Three.js game + HUD: NUS E4-03-07 lab defence, mode / sensors / charge / events; **virtual board**, fixture replay, paste log, Web Serial |
+| **Why** | Markers see state even if they miss the matrix; turns UART into a playable demo without changing firmware authority |
+| **Hooks** | `telemetry_evt.*` + [`Command/`](../Command/README.md); contract in [`Telemetry_EVT_Contract.md`](Telemetry_EVT_Contract.md); design in [`Command_Center_Design.md`](Command_Center_Design.md) |
+| **Effort** | Medium–high (parser + virtual board + 3D world); offline-friendly (`node Command/serve.mjs`, vendored three.js) |
 
 ---
 

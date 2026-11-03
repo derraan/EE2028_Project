@@ -44,7 +44,7 @@ Everything in the assignment's basic specification is a **minimum requirement**.
 
 ## What is missing now
 
-Application source for the mandatory baseline, enhancements adapter, telemetry EVT helpers and VESPER dashboard **is already in this repository** (`Core/Src/main.c`, `App/`, `Command/`). What is **not** in this checkout — and still blocks a firmware build — is the STM32CubeIDE project glue:
+Application source for the mandatory baseline, enhancements adapter, telemetry EVT helpers and VESPER *The Last Signal* game **is already in this repository** (`Core/Src/main.c`, `App/`, `Command/`). What is **not** in this checkout — and still blocks a firmware build — is the STM32CubeIDE project glue:
 
 - An STM32CubeMX `.ioc` file or complete STM32CubeIDE project
 - Startup code, linker script, CMSIS/HAL drivers or interrupt files
@@ -61,7 +61,7 @@ Application source for the mandatory baseline, enhancements adapter, telemetry E
 | Six-sensor reads + units + threshold logging | Yes (BSP call sites) | Pending BSP link |
 | `EVT` emitters + weak `Telemetry_WriteLine` → `printf` | Yes | Pending USART retarget |
 | Matrix / buzzer / IR / relay via `Enhancements_*` | Yes (`-DEE_ENHANCEMENTS=1`) | Pending Cube + wiring |
-| VESPER fixture replay + Web Serial UI | Yes (`Command/`) | Live stream pending USART |
+| VESPER *The Last Signal* (3D game + HUD, virtual board, fixtures, Web Serial) | Yes (`Command/`) | Live stream pending USART |
 
 Frozen gameplay (do not “fix” from older assignment wording without a focused patch):
 
