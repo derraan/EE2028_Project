@@ -156,6 +156,8 @@
     ui('countdown').textContent = state.remaining === null ? 'AWAITING EVENT' : state.remaining.toFixed(1);
     ui('coordinates').textContent = state.contact ? 'ZOMBIE CONTACT / SIMULATED' : 'PERIMETER / CLEAR';
     ui('pb').disabled = state.ended;
+    ui('pb').textContent = emergency ? 'PB · Double tap to rescue' : state.mode === 'BATTLE' ? 'PB · Tap to charge' : 'PB · Double tap for Battle';
+    ui('sceneLabel').textContent = forward ? 'FORWARD OPTICS · SIMULATED' : 'ORBIT VIEW · DRAG TO EXPLORE';
     ui('survey').disabled = state.ended || state.mode !== 'STANDBY';
     ui('threat').disabled = state.ended || emergency || !state.surveying || state.contact;
     ui('overturn').disabled = state.ended || state.mode !== 'BATTLE';
@@ -212,16 +214,29 @@
   }
   function draw() {
     const sky = context.createLinearGradient(0,0,0,height);
-    sky.addColorStop(0,'#0c1a23');sky.addColorStop(1,'#526666');
+    sky.addColorStop(0,'#080b20');sky.addColorStop(.55,'#534b68');sky.addColorStop(1,'#b68b7b');
     context.fillStyle=sky;context.fillRect(0,0,width,height);
-    context.fillStyle='#d9d2ab';context.beginPath();context.arc(width*.78,height*.2,22,0,Math.PI*2);context.fill();
+    const halo = context.createRadialGradient(width*.76,height*.24,8,width*.76,height*.24,height*.3);
+    halo.addColorStop(0,'#ffe9ca66'); halo.addColorStop(1,'#efd3a000');
+    context.fillStyle=halo;context.fillRect(0,0,width,height);
+    context.fillStyle='#e8d3b8';context.beginPath();context.arc(width*.76,height*.24,height*.1,0,Math.PI*2);context.fill();
+    context.fillStyle='#292638';context.beginPath();context.arc(width*.78,height*.22,height*.095,0,Math.PI*2);context.fill();
+    for(let i=0;i<70;i++){
+      context.fillStyle='rgba(221,233,220,'+(.1+.15*Math.sin(clock+i))+')';
+      context.fillRect((i*137.7)%width,(i*43.3+clock*(2+i%3))%height,1.5,1.5);
+    }
     faces.length=0;
     for(let x=-60;x<60;x+=8) for(let z=-60;z<60;z+=8) {
       polygon([[x,-1,z],[x+8,-1,z],[x+8,-1,z+8],[x,-1,z+8]],(x+z)%16===0?'#243232':'#293635');
     }
     for(let i=0;i<24;i++) {
       const angle=i*2.4, radius=32+i%5*4, x=Math.sin(angle)*radius,z=Math.cos(angle)*radius;
-      box(x,-1,z,3,4+i%7,3,'#30403f');
+      const buildingHeight=8+i%7*3;
+      box(x,-1,z,2.6,buildingHeight,2.8,'#344045');
+      for(let level=2;level<buildingHeight;level+=3) {
+        box(x,-1+level,z-2.82,1.9,.12,.03,i%3?'#6f7772':'#c9a786');
+      }
+      if(i%4===0) box(x,buildingHeight+4+Math.sin(clock*.4+i),z,2.6,1,2.8,'#556063');
     }
     box(0,-1,-15,5,1,5,'#475452');
     box(0,0,-17,5,6,2,state.recovered?'#a9c79b':'#65706a');
@@ -247,7 +262,12 @@
     faces.sort((a,b)=>b.depth-a.depth);
     for(const face of faces) {
       context.beginPath();face.vertices.forEach((vertex,index)=>index?context.lineTo(vertex.x,vertex.y):context.moveTo(vertex.x,vertex.y));
-      context.closePath();context.fillStyle=face.color;context.fill();context.strokeStyle='#91b3a214';context.stroke();
+      context.closePath();context.fillStyle=face.color;context.fill();
+      const shade=context.createLinearGradient(0,face.vertices[0].y, width,height);
+      shade.addColorStop(0,'#f1d5b925');shade.addColorStop(1,'#02081265');
+      context.fillStyle=shade;context.fill();
+      context.fillStyle='rgba(110,102,125,'+Math.min(.65,face.depth/140)+')';context.fill();
+      context.strokeStyle='#c4d3bf12';context.stroke();
     }
     if(state.scan>0) {
       const p=point(0,0,0);
@@ -257,6 +277,9 @@
       const start=point(0,y,-2),end=point(5,4,-9);
       if(start&&end){context.strokeStyle='#dcffb7';context.lineWidth=4;context.beginPath();context.moveTo(start.x,start.y);context.lineTo(end.x,end.y);context.stroke();context.lineWidth=1;}
     }
+    const vignette=context.createRadialGradient(width/2,height/2,height*.2,width/2,height/2,width*.65);
+    vignette.addColorStop(0,'#03081000');vignette.addColorStop(1,'#030810cc');
+    context.fillStyle=vignette;context.fillRect(0,0,width,height);
     if(forward){context.strokeStyle='#c2ec9e';context.strokeRect(width/2-12,height/2-12,24,24);}
   }
   function frame(now) {

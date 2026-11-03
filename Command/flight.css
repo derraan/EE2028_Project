@@ -9,3 +9,16 @@
 @media(prefers-reduced-motion:reduce){#boardLed.battle,#boardLed.fast{animation:none}}
 #pbHint{flex-basis:100%;margin:4px 0;color:var(--muted);font-size:12px}
 #pb{touch-action:manipulation}
+body{background:radial-gradient(ellipse at 80% 0,#242033 0,transparent 55%),#0b1016}
+header{background:#0a1018aa;backdrop-filter:blur(12px)}
+.scene{border-radius:12px 12px 0 0;box-shadow:0 20px 80px #0005;height:65vh;max-height:780px}
+.objective{background:linear-gradient(100deg,#101521c9,#10152100);padding:18px;border-left:2px solid #c2ec9e;left:22px;top:80px}
+.objective h2{font-size:23px;line-height:1.35}.objective p{margin-bottom:0}
+.scene-top button{background:#101521aa;backdrop-filter:blur(12px);border-radius:24px}
+.instruments{background:#101722;border-radius:0 0 12px 12px}.panel{border-radius:10px;background:#111923}
+button{border-radius:6px;transition:background .18s,border-color .18s,transform .18s}
+button:active{transform:translateY(1px)}.primary{min-width:235px;box-shadow:0 0 24px #bddb9020}
+.controls{padding:16px;background:#101722;border:1px solid var(--line);border-radius:10px}
+.emergency{background:radial-gradient(ellipse,#511e2430,#541522c9);backdrop-filter:blur(2px)}
+.ending{background:#101520c9;backdrop-filter:blur(9px)}
+@media(max-width:700px){.scene{height:60vh}.objective{left:12px;top:65px;padding:12px;max-width:235px}.objective h2{font-size:18px}.primary{min-width:100%;min-height:52px}.controls button{min-height:44px}.brand span{display:none}}
