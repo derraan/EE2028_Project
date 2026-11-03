@@ -75,7 +75,7 @@ Module harnesses and a UART bench live under `App/Test/`.
 
 ### VESPER Command Center — `Command/`
 
-Browser dashboard: mode, sensors, charge, countdown, event log. Same parser for **fixture replay** and **Web Serial** @ 115200 8N1.
+Browser game + dashboard (*The Last of EE2028*, NUS E4-03-07 in year 6202): 3D lab scene, mode, sensors, charge, countdown, raw UART log. One parser for the **virtual board**, **fixture replay**, **pasted logs** and **Web Serial** @ 115200 8N1.
 
 ---
 
@@ -88,12 +88,13 @@ Browser dashboard: mode, sensors, charge, countdown, event log. Same parser for 
 npx --yes serve Command
 ```
 
-Open the URL (usually `http://localhost:3000`). Use **Replay fixture** or **Replay early SD** in the toolbar.
+Open the URL (usually `http://localhost:3000`). The default **Virtual board** source behaves like the firmware (PB tap / hold, flip, disturbance); **Recorded mission** replays `Command/fixtures/*.log`.
 
 Optional parser check:
 
 ```bash
 node scripts/test_uart_parser.mjs
+node scripts/test_virtual_board.mjs
 ```
 
 More UI detail: [Command/README.md](Command/README.md).
@@ -126,7 +127,7 @@ Walk the acceptance list in Next Steps before treating the demo as done.
 ### E. Live VESPER with the board
 
 1. Close Tera Term / other apps holding the COM port.
-2. Serve `Command/` as in step A; click **Connect serial** (Chrome or Edge).
+2. Serve `Command/` as in step A; choose **Live board (Web Serial)** → **Connect board** (Chrome or Edge).
 3. To save a real mission log for replay later: [scripts/capture_uart_mission.md](scripts/capture_uart_mission.md).
 
 ---

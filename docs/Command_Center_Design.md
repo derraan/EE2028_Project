@@ -2,7 +2,7 @@
 
 Web mission-control UI for EE2028 Assignment 2 enhancements **#4** (UART Command Center) and stretch **#6** (Wi‑Fi / BLE).
 
-**Status:** Fixture replay + Web Serial UI **implemented** under `Command/src/`. Live board stream waits on Cube USART retarget (same parser). Optional Node bridge remains a stub — Web Serial is the preferred live path.
+**Status:** VESPER is now a game page (*The Last of EE2028* lab scene, merged from `vesper-3d-concept`) driven by one parser. Sources: in-browser **virtual board** (`sim.js`, mirrors `main.c`), fixture replay, pasted UART, Web Serial — all **implemented** under `Command/src/`. Live board stream waits on Cube USART retarget (same parser). Optional Node bridge remains a stub — Web Serial is the preferred live path.
 
 Sources:
 
@@ -60,10 +60,11 @@ Mandatory UART telemetry must keep working. Wireless is an add-on, never a UART 
 
 Three layers share one JS state model (as-built):
 
-1. **UI** — `Command/index.html` + `Command/src/bindings.js` served on localhost  
+1. **UI** — `Command/index.html` + `bindings.js` (HUD) + `scene.js` (canvas world) served on localhost  
 2. **Parser / state** — `parser.js` / `state.js` turn UART/`EVT` lines into `{ mode, telemetry, charge, events… }`  
 3. **Transport**
-   - **Phase A (done):** fixture replay via `replay.js` + `Command/fixtures/*.log`  
+   - **Phase 0 (done):** virtual board `sim.js` prints firmware-identical UART lines into the same parser  
+   - **Phase A (done):** fixture replay via `replay.js` + `Command/fixtures/*.log`, or pasted logs  
    - **Phase B (UI done; board pending):** **Web Serial API** in Chrome/Edge (`serial.js`)  
    - **Phase C (optional stub):** `Command/bridge/` if Web Serial is blocked, or for Wi‑Fi/BLE fan-in  
 
@@ -71,8 +72,8 @@ Parser also accepts legacy mode aliases (`THE_LAST_OF_EE2028`, `LAST_OF_2028`, `
 
 ```text
                     ┌─────────────────────────────┐
-   fixtures/*.log → │  Command/ (localhost:3000)  │
-                    │  parse → state → data-cc-*  │
+   sim.js / *.log → │  Command/ (localhost:3000)  │
+                    │  parse → state → HUD+scene  │
    ST-LINK COM  ──→ │  Web Serial (preferred)     │
    (or bridge WS)   └─────────────────────────────┘
 ```
@@ -86,7 +87,7 @@ Parser also accepts legacy mode aliases (`THE_LAST_OF_EE2028`, `LAST_OF_2028`, `
 2. **Close Tera Term** (only one app can own the COM port).  
 3. From repo root: `npx --yes serve Command`  
 4. Open Chrome → `http://localhost:3000`  
-5. Click **Connect serial** (to add) → choose ST-LINK VCP @ **115200 8N1**  
+5. Source **Live board (Web Serial)** → **Connect board** → choose ST-LINK VCP @ **115200 8N1**  
 6. Dashboard updates; raw lines can still be logged in a debug panel if needed  
 
 ### Deploy stages
@@ -105,10 +106,13 @@ Parser also accepts legacy mode aliases (`THE_LAST_OF_EE2028`, `LAST_OF_2028`, `
 
 ```text
 Command/
-  index.html          # VESPER shell
+  index.html          # VESPER game page
+  flight.css          # styles
   src/
-    main.js           # boot + UI mode (fixture / serial)
-    bindings.js       # data-cc-* DOM updates
+    main.js           # sources → parser → HUD + scene, frame loop
+    bindings.js       # HUD DOM updates from parser state
+    scene.js          # canvas world renderer (view object in, pixels out)
+    sim.js            # virtual board mirroring Core/Src/main.c
     parser.js         # UART / fixture line parser
     state.js          # shared mission state
     serial.js         # Web Serial transport
@@ -128,7 +132,21 @@ Then open the printed local URL (typically `http://localhost:3000`).
 
 ---
 
-## 4) Mockup overview (`Command/index.html`)
+## 4) Game page (as-built, `Command/index.html`)
+
+| Area | Content |
+|------|---------|
+| Scene | Canvas world: drone, NUS E4-03-07 lab, ruined Singapore street, hostile contact; orbit (drag / arrows) or forward camera |
+| Objective card | Story text derived from parser state (scout → defend → The Last of EE2028 → ending) |
+| Overlays | Emergency countdown (interpolated between 1 Hz `EVT COUNTDOWN`), self-destruct, mission-record ending |
+| Instruments | Mode + board LED pattern, laser charge bars + armed, signal source |
+| Panels | Virtual-board controls, recorded missions, paste log, live board; sensors; raw UART transmission log |
+
+Authority rule: scene effects (beam, contact cleared, lab lit, overlays) fire only from parsed events (`fireSeq`, `tripSeq`, mode/countdown). Fiction is the world, never the drone state.
+
+> §4 *Mockup overview* (below, historical) through §6 describe the earlier "Expedition control" mockup and its `data-cc-*` hooks, superseded by the game page.
+
+### Historical: mockup overview
 
 | Item | Detail |
 |------|--------|

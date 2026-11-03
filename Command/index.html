@@ -3,35 +3,57 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>VESPER — The Last of EE2028</title>
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="flight.css">
 </head>
 <body>
-<header><a class="brand" href="./">△ VESPER <span>THE LAST OF EE2028</span></a><span class="status" id="connection">SIMULATION</span></header>
+<header><a class="brand" href="./">△ VESPER <span>THE LAST OF EE2028</span></a><span class="status" id="connection">VIRTUAL BOARD</span></header>
 <main>
-<div class="mission"><div><span class="eyebrow">YEAR 6202 / NUS / E4-03-07</span><h1>Laboratory Command Centre</h1></div><button id="restart">Reset mission ↗</button></div>
+<div class="mission"><div><span class="eyebrow">YEAR 6202 / NUS / E4-03-07</span><h1>Laboratory Command Centre</h1></div><button id="restart">Reset mission ↺</button></div>
+
 <section class="scene">
-<canvas id="world" aria-label="Three dimensional drone and ruined Singapore streets outside the NUS laboratory. Drag to orbit the camera." tabindex="0"></canvas>
+<canvas id="world" aria-label="Three dimensional drone outside the NUS laboratory in a ruined Singapore street. Drag or use the arrow keys to orbit the camera." tabindex="0"></canvas>
 <div class="scene-top"><span>SINGAPORE / LAB PERIMETER</span><button id="camera">Forward camera</button></div>
-<div class="objective"><span class="eyebrow">MISSION OBJECTIVE</span><h2 id="objective">Scout for a human habitat</h2><p id="hint">Survey the district, then defend the lab from the infected.</p></div>
-<div class="emergency" id="emergency" hidden><span>THE LAST OF EE2028</span><strong id="countdown">10.0</strong><p>Restore the drone before the signal is lost.</p></div>
+<div class="objective"><span class="eyebrow">MISSION OBJECTIVE</span><h2 id="objective">Scout for a human habitat</h2><p id="hint"></p></div>
+<div class="emergency" id="emergency" hidden><span>THE LAST OF EE2028</span><strong id="countdown">10.0</strong><p id="emergencyHint">Flip the drone upright, then double press PB to rescue.</p></div>
 <div class="ending" id="ending" hidden><span class="eyebrow" id="endingLabel"></span><h2 id="endingTitle"></h2><p id="endingText"></p></div>
-<div class="scene-bottom"><span id="sceneLabel">SIMULATED WORLD · DRAG TO ORBIT</span><span id="coordinates">PERIMETER / CLEAR</span></div>
+<div class="scene-bottom"><span id="sceneLabel">ORBIT VIEW · DRAG TO EXPLORE</span><span id="coordinates">PERIMETER / CLEAR</span></div>
 </section>
+
 <section class="instruments">
 <div><span class="eyebrow">DRONE MODE</span><strong><i id="boardLed" aria-hidden="true"></i><span id="mode">STANDBY</span></strong><small id="ledPattern"></small></div>
-<div><span class="eyebrow">LASER CHARGE</span><strong id="charge">0 / 10</strong><div id="chargeBars" class="charge-bars"></div></div>
-<div><span class="eyebrow">SIGNAL SOURCE</span><select id="source" aria-label="Signal source"><option value="simulation">Simulation</option><option value="replay">UART log replay</option></select><small id="freshness">Browser-generated events</small></div>
+<div><span class="eyebrow">LASER CHARGE</span><strong id="charge">0 / 10</strong><div id="chargeBars" class="charge-bars"></div><small id="armed">Not armed · needs ≥5/10</small></div>
+<div><span class="eyebrow">SIGNAL SOURCE</span><select id="source" aria-label="Signal source">
+<option value="simulation">Virtual board (in browser)</option>
+<option value="replay">Recorded mission</option>
+<option value="paste">Paste UART log</option>
+<option value="serial">Live board (Web Serial)</option>
+</select><small id="freshness">Browser board emits the same UART lines as the firmware</small></div>
 </section>
-<section id="simulationControls" class="controls" aria-label="Simulation controls">
-<button id="pb" class="primary">Press PB</button><button id="survey">Sample habitat</button><button id="threat">Simulate zombie arrival</button><button id="overturn">Simulate overturn</button>
-<p id="pbHint">Double press within 0.5 s to enter Battle. A single press is ignored in Standby.</p>
+
+<section id="simulationControls" class="controls" aria-label="Virtual board controls">
+<button id="pb" class="primary">PB · Double tap for Battle</button><button id="threat">Zombie arrives</button><button id="overturn">Flip upside down</button>
+<p id="pbHint">Tap = press · hold ≥0.5 s = hold · Space bar works too.</p>
 </section>
-<section id="replayPanel" class="panel" hidden><label for="uart">Replay firmware output</label><p>Paste UART text to visualize reported modes, charge, warnings and events. No device is connected.</p><textarea id="uart" rows="4" placeholder="Paste complete firmware output lines here"></textarea><button id="ingest">Read messages</button><small id="parseStatus"></small></section>
+
+<section id="replayControls" class="controls" aria-label="Recorded missions" hidden>
+<button id="replaySample" class="primary">Replay full mission</button><button id="replayEarly">Replay rescue-limit self-destruct</button><button id="replayStop">Stop</button>
+<p>Plays <code>fixtures/*.log</code> through the same parser as live UART.</p>
+</section>
+
+<section id="pastePanel" class="panel" hidden><label for="uart">Replay firmware output</label><p>Paste UART text to visualize reported modes, charge, warnings and events. No device is connected.</p><textarea id="uart" rows="4" placeholder="Paste complete firmware output lines here"></textarea><button id="ingest">Read messages</button><small id="parseStatus"></small></section>
+
+<section id="serialControls" class="controls" aria-label="Live board" hidden>
+<button id="serialConnect" class="primary">Connect board</button><button id="serialDisconnect">Disconnect</button>
+<p id="serialHint">Chrome / Edge · ST-LINK virtual COM @ 115200 8N1. Disconnecting is link loss, not mission end.</p>
+</section>
+
 <div class="details">
-<details class="panel"><summary>Sensor instruments <span id="sampleAge">No sample</span></summary><p>Values retain the units printed by the firmware. Last readings remain visible when warnings replace normal telemetry.</p><div id="sensors" class="sensor-grid"></div><p id="warning" role="status">No active warning reported.</p></details>
-<section class="panel transmissions"><div class="log-heading"><span class="eyebrow">TRANSMISSION LOG</span><span id="eventCount">0 EVENTS</span></div><ol id="log" aria-live="polite"></ol></section>
+<details class="panel" open><summary>Sensor instruments <span id="sampleAge">No sample</span></summary><p>Values keep the units printed by the firmware. Telemetry streams once per second in Standby only.</p><div id="sensors" class="sensor-grid"></div><p id="warning" role="status">No active warning reported.</p></details>
+<section class="panel transmissions"><div class="log-heading"><span class="eyebrow">TRANSMISSION LOG</span><span id="eventCount">0 LINES</span></div><ol id="log" aria-live="polite"></ol></section>
 </div>
-<footer><span>VESPER / FIELD OPERATIONS</span><span>World, encounters and mission outcomes are simulated. UART replay uses pasted messages.</span></footer>
+<footer><span>VESPER / FIELD OPERATIONS</span><span>The world and its encounters are fiction. Drone state is only what the firmware (or virtual board) reports.</span></footer>
 </main>
-<script src="flight.js"></script>
+<div id="toast" role="status" hidden></div>
+<script type="module" src="./src/main.js"></script>
 </body></html>

@@ -22,3 +22,14 @@ button:active{transform:translateY(1px)}.primary{min-width:235px;box-shadow:0 0 
 .emergency{background:radial-gradient(ellipse,#511e2430,#541522c9);backdrop-filter:blur(2px)}
 .ending{background:#101520c9;backdrop-filter:blur(9px)}
 @media(max-width:700px){.scene{height:60vh}.objective{left:12px;top:65px;padding:12px;max-width:235px}.objective h2{font-size:18px}.primary{min-width:100%;min-height:52px}.controls button{min-height:44px}.brand span{display:none}}
+/* Shared-parser integration: sources, raw UART log, live status */
+#boardLed.off{background:#354447;box-shadow:none;animation:none}
+#connection[data-link=severed],#connection[data-link=ended]{color:var(--amber)}
+#connection[data-link=idle]{color:var(--muted)}
+#warning.alert{color:var(--amber)}
+#log li{word-break:break-word}#log li.evt{color:var(--green)}
+#pb{user-select:none;-webkit-user-select:none}#pb.holding{background:#e5c593;box-shadow:0 0 28px #e5c59366}
+.controls p{flex-basis:100%;margin:4px 0;color:var(--muted);font-size:12px}
+code{font:11px monospace;color:var(--green)}
+#toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:#d4efbf;color:#162414;padding:13px 22px;border-radius:8px;z-index:10;font:12px monospace;box-shadow:0 10px 60px #0008}
+#emergencyHint{max-width:420px}
