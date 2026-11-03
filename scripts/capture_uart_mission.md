@@ -4,7 +4,7 @@ Hardware capture cannot run until USART retarget + board flash are available. Un
 
 ## When the board is ready
 
-1. Flash firmware with `Telemetry_WriteLine` → USART1 (ST-LINK VCP) @ **115200 8N1**.
+1. Flash firmware with the strong `Telemetry_WriteLine` override (see `App/Src/telemetry_uart_hal.c.example`, `EE_TELEMETRY_USART=1`) → USART1 (ST-LINK VCP) @ **115200 8N1**. Mission lines use `Telemetry_*`; CubeIDE `printf` is debug-only.
 2. **Disconnect the debugger session** if it monopolizes the COM port / semihosting.
 3. Open a serial terminal (Tera Term / PuTTY) on the ST-LINK Virtual COM port.
 4. Fly a mission covering: Standby telemetry → Battle → charge → hold-to-fire → **The Last of EE2028** → countdown → rescue **or** timeout / early self-destruct → `EVT TERMINATE` → `Cheerio!`.

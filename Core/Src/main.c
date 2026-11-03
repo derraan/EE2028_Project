@@ -15,9 +15,9 @@
 #include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01_hsensor.h"
 #include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01_magneto.h"
 #include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01_psensor.h"
-#include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
+/* #include <stdio.h> — add back only for CubeIDE-console debug printf */
 
 #if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
 #include "enhancements.h"
@@ -30,7 +30,8 @@
 #endif
 #endif
 
-extern void initialise_monitor_handles(void); /* for semi-hosting support (printf) */
+/* CubeIDE console debug only — mission / VESPER traffic uses Telemetry_*. */
+extern void initialise_monitor_handles(void); /* semihosting printf */
 
 /* Define thresholds */
 #define THRESHOLD_A 20.0f
@@ -130,7 +131,7 @@ int main(void)
 	}
 #endif
 
-	printf("Drone initialized: Entering STANDBY MODE (Laser Charge: %d/10)\n", laser_charge);
+	Telemetry_Printf("Drone initialized: Entering STANDBY MODE (Laser Charge: %d/10)", laser_charge);
 	Telemetry_EvtMode(EVT_MODE_STANDBY);
 	Telemetry_EvtCharge((uint8_t)laser_charge);
 
@@ -191,7 +192,7 @@ int main(void)
 						current_state = BATTLE_MODE;
 						led_blink_tick = HAL_GetTick();
 						PB_CancelPendingSingle();
-						printf("Critical T/A/G threshold violated -> Entering BATTLE MODE. (Laser Charge: %d/10)\r\n", laser_charge);
+						Telemetry_Printf("Critical T/A/G threshold violated -> Entering BATTLE MODE. (Laser Charge: %d/10)", laser_charge);
 						Telemetry_EvtMode(EVT_MODE_BATTLE);
 					}
 					else if (any_exceeded) {
@@ -203,11 +204,8 @@ int main(void)
 					else {
 						if ((HAL_GetTick() - tick_1s_telemetry) >= 1000) {
 							tick_1s_telemetry = HAL_GetTick();
-							printf("Telemetry -> T:%.1f °C, P:%.1f hPa, H:%.1f %% | Accel:[%.1f, %.1f, %.1f] m/s^2 | Gyro:[%.1f, %.1f, %.1f] dps | Magneto:[%.1f, %.1f, %.1f] mgauss\r\n",
-								temp_data, press_data, humid_data,
-								accel_data[0], accel_data[1], accel_data[2],
-								gyro_data[0], gyro_data[1], gyro_data[2],
-								magneto_data[0], magneto_data[1], magneto_data[2]);
+							Telemetry_SendSensors(temp_data, press_data, humid_data,
+								accel_data, gyro_data, magneto_data);
 						}
 					}
 				}
@@ -226,20 +224,20 @@ int main(void)
 				{
 					if (laser_charge < 5) {
 						if (!pb_low_charge_warned) {
-							printf("Laser charge too low (%d/10) to fire! Please single-press to recharge the laser gun.\r\n", laser_charge);
+							Telemetry_Printf("Laser charge too low (%d/10) to fire! Please single-press to recharge the laser gun.", laser_charge);
 							pb_low_charge_warned = true;
 						}
 					}
 					else if ((HAL_GetTick() - pb_last_fire_tick) >= PB_FIRE_PERIOD_MS) {
 						pb_last_fire_tick = HAL_GetTick();
 						laser_charge -= 5;
-						printf("Laser gun fired continuously! PEW PEW! (Remaining charge: %d/10)\r\n", laser_charge);
+						Telemetry_Printf("Laser gun fired continuously! PEW PEW! (Remaining charge: %d/10)", laser_charge);
 						Telemetry_EvtFire((uint8_t)laser_charge); /* charge AFTER the shot */
 #if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
 						Enhancements_OnEvent(DRONE_EVENT_LASER_FIRED, HAL_GetTick());
 #endif
 						if (laser_charge < 5) {
-							printf("Laser charge too low (%d/10) to fire! Please single-press to recharge the laser gun.\r\n", laser_charge);
+							Telemetry_Printf("Laser charge too low (%d/10) to fire! Please single-press to recharge the laser gun.", laser_charge);
 							pb_low_charge_warned = true;
 						}
 					}
@@ -258,7 +256,7 @@ int main(void)
 					uint32_t elapsed;
 					uint32_t remaining;
 					tick_1s_attack_msg = HAL_GetTick();
-					printf("Drone was attacked!\r\n");
+					Telemetry_Printf("Drone was attacked!");
 					Telemetry_EvtAttack();
 					elapsed = HAL_GetTick() - the_last_of_2028_entry_tick;
 					remaining = (elapsed >= RESCUE_TIMEOUT_MS) ? 0U : (RESCUE_TIMEOUT_MS - elapsed);
@@ -273,14 +271,14 @@ int main(void)
 
 			case SELF_DESTRUCT_TRIGGERED:
 				if (!sacrifice_sent) {
-					printf("Drone has made a noble sacrifice for mankind...\r\n");
+					Telemetry_Printf("Drone has made a noble sacrifice for mankind...");
 					noble_sacrifice_tick = HAL_GetTick();
 					sacrifice_sent = true;
 				}
 
 				if (sacrifice_sent && !cheerio_sent && (HAL_GetTick() - noble_sacrifice_tick) >= 1000) {
 					Telemetry_EvtTerminate(); /* immediately before Cheerio! */
-					printf("Cheerio!\r\n");
+					Telemetry_Printf("Cheerio!");
 					cheerio_sent = true;
 					current_state = SELF_DESTRUCT_DEAD;
 				}
@@ -414,32 +412,32 @@ void PB_OnDoublePress(void)
 	if (current_state == STANDBY_MODE) {
 		current_state = BATTLE_MODE;
 		led_blink_tick = HAL_GetTick();
-		printf("PB Double Press (Standby) -> Entering BATTLE MODE. (Laser Charge: %d/10)\r\n", laser_charge);
+		Telemetry_Printf("PB Double Press (Standby) -> Entering BATTLE MODE. (Laser Charge: %d/10)", laser_charge);
 		Telemetry_EvtMode(EVT_MODE_BATTLE);
 	}
 	else if (current_state == BATTLE_MODE) {
 		current_state = STANDBY_MODE;
 		BSP_LED_On(LED2);
-		printf("PB Double Press (Battle) -> Returning to STANDBY MODE. (Laser Charge: %d/10)\r\n", laser_charge);
+		Telemetry_Printf("PB Double Press (Battle) -> Returning to STANDBY MODE. (Laser Charge: %d/10)", laser_charge);
 		Telemetry_EvtMode(EVT_MODE_STANDBY);
 	}
 	else if (current_state == THE_LAST_OF_2028) {
 		the_last_of_2028_rescue_attempts++;
-		printf("Rescue attempt %d/5 (Double Press detected)...\r\n", the_last_of_2028_rescue_attempts);
+		Telemetry_Printf("Rescue attempt %d/5 (Double Press detected)...", the_last_of_2028_rescue_attempts);
 
 		if (current_accel_z < -4.0f) {
 			if (the_last_of_2028_rescue_attempts >= RESCUE_ATTEMPT_LIMIT) {
 				Enter_Self_Destruct("5 rescue attempts failed while upside down");
 			}
 			else {
-				printf("Drone is still upside down! Flip upright and double press to rescue.\r\n");
+				Telemetry_Printf("Drone is still upside down! Flip upright and double press to rescue.");
 			}
 		}
 		else {
 			current_state = BATTLE_MODE;
 			led_blink_tick = HAL_GetTick();
 			the_last_of_2028_rescue_attempts = 0;
-			printf("PB Rescue Action: Successfully reverted to Battle Mode.\r\n");
+			Telemetry_Printf("PB Rescue Action: Successfully reverted to Battle Mode.");
 			Telemetry_EvtRescue();
 			Telemetry_EvtMode(EVT_MODE_BATTLE);
 		}
@@ -457,11 +455,11 @@ void PB_OnSinglePress(void)
 		if (laser_charge > 10) {
 			laser_charge = 10;
 		}
-		printf("Laser recharging... Current charge: %d/10\r\n", laser_charge);
+		Telemetry_Printf("Laser recharging... Current charge: %d/10", laser_charge);
 		Telemetry_EvtCharge((uint8_t)laser_charge);
 	}
 	else {
-		printf("Laser charge is already sufficient (>=5/10). Hold button >500ms to fire! Or double-press within 500ms to return to standby mode\r\n");
+		Telemetry_Printf("Laser charge is already sufficient (>=5/10). Hold button >500ms to fire! Or double-press within 500ms to return to standby mode");
 	}
 }
 
@@ -474,7 +472,7 @@ void Enter_The_Last_Of_2028(void)
 	the_last_of_2028_rescue_attempts = 0;
 	PB_CancelPendingSingle();
 	pb_last_short_press_tick = 0;
-	printf("Drone is upside down! Entering THE LAST OF EE2028.\r\n");
+	Telemetry_Printf("Drone is upside down! Entering THE LAST OF EE2028.");
 	Telemetry_EvtMode(EVT_MODE_THE_LAST_OF_2028);
 	Telemetry_EvtCountdown(RESCUE_TIMEOUT_MS);
 }
@@ -486,7 +484,7 @@ void Enter_Self_Destruct(const char *reason)
 	if (current_state == SELF_DESTRUCT_TRIGGERED || current_state == SELF_DESTRUCT_DEAD) {
 		return;
 	}
-	printf("%s! Drone self-destructing...\r\n", reason);
+	Telemetry_Printf("%s! Drone self-destructing...", reason);
 	/* Map human reason → EVT token (avoid matching "without rescue" as rescue_limit). */
 	if (reason != NULL && strstr(reason, "rescue attempts") != NULL) {
 		reason_token = EVT_REASON_RESCUE_LIMIT;
@@ -539,27 +537,45 @@ static void Enhancements_Tick(void)
 }
 #endif
 
-/* --- Threshold Warning Logging Function --- */
+/* --- Threshold Warning Logging Function (mission UART) --- */
 void Check_And_Log_Thresholds(float t, float p, float h, float a[3], float g[3], float m[3])
 {
 	if (t > THRESHOLD_T) {
-		printf("T:%.2f C, exceeds threshold of %.2f C.\r\n", t, THRESHOLD_T);
+		Telemetry_Printf("T:%.2f C, exceeds threshold of %.2f C.", (double)t, (double)THRESHOLD_T);
 	}
 	if (p < THRESHOLD_P) {
-		printf("P:%.2f hPa, drops below threshold of %.2f hPa.\r\n", p, THRESHOLD_P);
+		Telemetry_Printf("P:%.2f hPa, drops below threshold of %.2f hPa.", (double)p, (double)THRESHOLD_P);
 	}
 	if (h < THRESHOLD_H) {
-		printf("H:%.2f %%, drops below threshold of %.2f %%.\r\n", h, THRESHOLD_H);
+		Telemetry_Printf("H:%.2f %%, drops below threshold of %.2f %%.", (double)h, (double)THRESHOLD_H);
 	}
-	if (a[0] > THRESHOLD_A) { printf("Accel X:%.2f m/s^2, exceeds threshold of %.2f m/s^2.\r\n", a[0], THRESHOLD_A); }
-	if (a[1] > THRESHOLD_A) { printf("Accel Y:%.2f m/s^2, exceeds threshold of %.2f m/s^2.\r\n", a[1], THRESHOLD_A); }
-	if (a[2] > THRESHOLD_A) { printf("Accel Z:%.2f m/s^2, exceeds threshold of %.2f m/s^2.\r\n", a[2], THRESHOLD_A); }
+	if (a[0] > THRESHOLD_A) {
+		Telemetry_Printf("Accel X:%.2f m/s^2, exceeds threshold of %.2f m/s^2.", (double)a[0], (double)THRESHOLD_A);
+	}
+	if (a[1] > THRESHOLD_A) {
+		Telemetry_Printf("Accel Y:%.2f m/s^2, exceeds threshold of %.2f m/s^2.", (double)a[1], (double)THRESHOLD_A);
+	}
+	if (a[2] > THRESHOLD_A) {
+		Telemetry_Printf("Accel Z:%.2f m/s^2, exceeds threshold of %.2f m/s^2.", (double)a[2], (double)THRESHOLD_A);
+	}
 
-	if (g[0] > THRESHOLD_G) { printf("Gyro X:%.2f dps, exceeds threshold of %.2f dps.\r\n", g[0], THRESHOLD_G); }
-	if (g[1] > THRESHOLD_G) { printf("Gyro Y:%.2f dps, exceeds threshold of %.2f dps.\r\n", g[1], THRESHOLD_G); }
-	if (g[2] > THRESHOLD_G) { printf("Gyro Z:%.2f dps, exceeds threshold of %.2f dps.\r\n", g[2], THRESHOLD_G); }
+	if (g[0] > THRESHOLD_G) {
+		Telemetry_Printf("Gyro X:%.2f dps, exceeds threshold of %.2f dps.", (double)g[0], (double)THRESHOLD_G);
+	}
+	if (g[1] > THRESHOLD_G) {
+		Telemetry_Printf("Gyro Y:%.2f dps, exceeds threshold of %.2f dps.", (double)g[1], (double)THRESHOLD_G);
+	}
+	if (g[2] > THRESHOLD_G) {
+		Telemetry_Printf("Gyro Z:%.2f dps, exceeds threshold of %.2f dps.", (double)g[2], (double)THRESHOLD_G);
+	}
 
-	if (m[0] > THRESHOLD_M) { printf("Magneto X:%.2f mgauss, exceeds threshold of %.2f mgauss.\r\n", m[0], THRESHOLD_M); }
-	if (m[1] > THRESHOLD_M) { printf("Magneto Y:%.2f mgauss, exceeds threshold of %.2f mgauss.\r\n", m[1], THRESHOLD_M); }
-	if (m[2] > THRESHOLD_M) { printf("Magneto Z:%.2f mgauss, exceeds threshold of %.2f mgauss.\r\n", m[2], THRESHOLD_M); }
+	if (m[0] > THRESHOLD_M) {
+		Telemetry_Printf("Magneto X:%.2f mgauss, exceeds threshold of %.2f mgauss.", (double)m[0], (double)THRESHOLD_M);
+	}
+	if (m[1] > THRESHOLD_M) {
+		Telemetry_Printf("Magneto Y:%.2f mgauss, exceeds threshold of %.2f mgauss.", (double)m[1], (double)THRESHOLD_M);
+	}
+	if (m[2] > THRESHOLD_M) {
+		Telemetry_Printf("Magneto Z:%.2f mgauss, exceeds threshold of %.2f mgauss.", (double)m[2], (double)THRESHOLD_M);
+	}
 }

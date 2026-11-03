@@ -59,7 +59,7 @@ Application source for the mandatory baseline, enhancements adapter, telemetry E
 |------|-----------|-----------------|
 | Modes, dual-edge PB, hold-to-fire, charge, rescue / self-destruct | Yes (`main.c`) | Pending Cube + flash |
 | Six-sensor reads + units + threshold logging | Yes (BSP call sites) | Pending BSP link |
-| `EVT` emitters + weak `Telemetry_WriteLine` → `printf` | Yes | Pending USART retarget |
+| Mission UART via `Telemetry_*` (prose + sensors + EVT); weak WriteLine → `printf` until HAL override | Yes | Pending `telemetry_uart_hal` + USART |
 | Matrix / buzzer / IR / relay via `Enhancements_*` | Yes (`-DEE_ENHANCEMENTS=1`) | Pending Cube + wiring |
 | VESPER fixture replay + Web Serial UI | Yes (`Command/`) | Live stream pending USART |
 
@@ -343,7 +343,7 @@ Do these only after the wired #1–#4 demo is stable.
 ## Immediate next five actions
 
 1. Generate and commit the STM32CubeIDE `.ioc` baseline for **B-L4S5I-IOT01A**; link `App/` + `Core/` sources.
-2. Prove LED + button EXTI + USART1 Virtual COM; retarget `Telemetry_WriteLine` / `printf`.
+2. Prove LED + button EXTI + USART1 Virtual COM; enable `telemetry_uart_hal.c.example` (`EE_TELEMETRY_USART=1`). Keep CubeIDE `printf` for debug only.
 3. Configure I2C2 / BSP and prove all on-board sensor identities.
 4. Run the **mandatory basic-task acceptance checklist** on hardware (software already written).
 5. Enable `-DEE_ENHANCEMENTS=1`, wire D2/D3/D4 + matrix I2C, then attach VESPER Web Serial.
