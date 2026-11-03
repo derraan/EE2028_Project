@@ -29,12 +29,12 @@ Everything in the assignment's basic specification is a **minimum requirement**.
 - [ ] Battle single press adds exactly 3/10 charge, with charge represented precisely enough to avoid float-comparison errors.
 - [ ] At charge ≥5/10, the laser fires automatically and consumes exactly 5/10 charge.
 - [ ] At charge <5/10, the laser stays inactive.
-- [ ] Battle double press returns to Standby when LAST_OF_2028 is not active.
-- [ ] Upside-down detection enters LAST_OF_2028.
-- [ ] LAST_OF_2028 LED blinks at 2 Hz.
-- [ ] `Drone Was Attacked!` is sent once per second while LAST_OF_2028 is active.
-- [ ] A double press within the 10-second rescue window clears LAST_OF_2028 and returns to normal Battle.
-- [ ] Single presses during LAST_OF_2028 are ignored.
+- [ ] Battle double press returns to Standby when THE_LAST_OF_EE2028 is not active.
+- [ ] Upside-down detection enters THE_LAST_OF_EE2028.
+- [ ] THE_LAST_OF_EE2028 LED blinks at 2 Hz.
+- [ ] `Drone Was Attacked!` is sent once per second while THE_LAST_OF_EE2028 is active.
+- [ ] A double press within the 10-second rescue window clears THE_LAST_OF_EE2028 and returns to normal Battle.
+- [ ] Single presses during THE_LAST_OF_EE2028 are ignored.
 - [ ] If no rescue arrives within 10 seconds, a final message is sent and all communication terminates.
 - [ ] The terminated state cannot accidentally resume telemetry or process normal controls.
 - [ ] All of the above runs together repeatedly without blocking timing failures.
@@ -61,7 +61,7 @@ The current skeleton also misses or incorrectly handles mandatory behavior:
 - Telemetry is not sampled/formatted/sent every second and has no units.
 - Threshold monitoring does not replace telemetry when **any** reading is outside its range.
 - The skeleton incorrectly changes Standby to Battle when T/A/G exceed thresholds; the basic specification requires threshold logs, while the Standby mode switch is caused by a double press.
-- LAST_OF_2028 has no entry timestamp, 10-second rescue timeout, periodic attack message or terminal shutdown.
+- THE_LAST_OF_EE2028 has no entry timestamp, 10-second rescue timeout, periodic attack message or terminal shutdown.
 - LED output and 1 Hz / 2 Hz timing are not implemented.
 - Sensor globals do not preserve three-axis data or identify physical units.
 - `HAL_Delay(100)` prevents the intended event-driven timing architecture.
@@ -214,17 +214,17 @@ Suggested update periods:
 - [ ] After each charge event, automatically fire whenever energy is at least 5/10.
 - [ ] Subtract exactly 5/10 after each automatic shot.
 - [ ] Keep the laser inactive and retain charge when energy is below 5/10.
-- [ ] Handle Battle double press by returning immediately to Standby when LAST_OF_2028 is not active.
+- [ ] Handle Battle double press by returning immediately to Standby when THE_LAST_OF_EE2028 is not active.
 - [ ] Show charge progress on the matrix.
 - [ ] Flash the matrix while fully charged/armed.
 - [ ] Play the fire tone and update telemetry after firing.
-- [ ] Enter LAST_OF_2028 when the persistent upside-down condition is detected.
+- [ ] Enter THE_LAST_OF_EE2028 when the persistent upside-down condition is detected.
 
-### LAST_OF_2028
+### THE_LAST_OF_EE2028
 
 - [ ] Record entry time and start one 10-second rescue window.
 - [ ] Blink the board LED at 2 Hz.
-- [ ] Repeatedly scroll `LAST OF 2028` on the matrix.
+- [ ] Repeatedly scroll `THE LAST OF EE2028` on the matrix.
 - [ ] Send `Drone Was Attacked!` once per second.
 - [ ] Ignore resolved single presses.
 - [ ] Accelerate buzzer beeps as the countdown approaches zero.
@@ -251,7 +251,7 @@ Everything from this phase onward is optional enhancement work. Preserve the wor
 - [ ] Implement charge bar, armed flash, radar line, countdown digits and explosion bitmap.
 - [ ] Implement display priority:
   1. Explosion/shutdown
-  2. LAST_OF_2028 text/countdown
+  2. THE_LAST_OF_EE2028 text/countdown
   3. One-time `BATTLE MODE`
   4. Armed flash
   5. Charge bar
@@ -300,7 +300,7 @@ Do these only after the wired #1–#4 demo is stable.
 - [ ] Treat the STM32 board as a companion controller; use a dedicated flight controller for stabilization.
 - [ ] Define a safe UART/MAVLink interface and fail-safe behavior.
 - [ ] Verify weight, power, mounting and radio rules.
-- [ ] Make LAST_OF_2028 request a controlled land/return action—not an unsafe in-flight motor cut.
+- [ ] Make THE_LAST_OF_EE2028 request a controlled land/return action—not an unsafe in-flight motor cut.
 - [ ] Do not make flight a dependency of the graded core demo.
 
 ---

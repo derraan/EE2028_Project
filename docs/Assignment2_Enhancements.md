@@ -24,7 +24,7 @@ High-impact extras for the spaceship drone, biased toward **hardware we already 
 | **What** | One 8×8 display presents every main feature: charge state, armed state, radar azimuth, mode changes and self-destruct countdown |
 | **Charging** | Fill a 0–8 column progress bar. Once fully charged / armed, flash the full matrix until fired |
 | **Radar** | Draw a moving vertical line whose horizontal position represents target azimuth from left to right |
-| **Mode text** | Scroll `BATTLE MODE` once when Battle begins. Scroll `LAST OF 2028` repeatedly for the whole LAST_OF_2028 mode |
+| **Mode text** | Scroll `BATTLE MODE` once when Battle begins. Scroll `THE LAST OF EE2028` repeatedly for the whole THE_LAST_OF_EE2028 mode |
 | **Countdown** | During the final 10 seconds, show `9` through `0` (or a shrinking bar). At `0`, display an explosion frame and then blank the matrix |
 | **Hooks** | A single non-blocking display controller selects the highest-priority screen and redraws from `HAL_GetTick()` |
 | **Effort** | Medium (HT16K33 I2C, scrolling text/font, bitmaps and display arbitration) |
@@ -34,13 +34,13 @@ High-impact extras for the spaceship drone, biased toward **hardware we already 
 Only one image fits on an 8×8 matrix, so use this priority:
 
 1. Explosion frame / shutdown
-2. LAST_OF_2028 countdown and repeating text
+2. THE_LAST_OF_EE2028 countdown and repeating text
 3. One-time `BATTLE MODE` transition text
 4. Armed flashing
 5. Charging progress
 6. Radar azimuth line
 
-Mode text temporarily interrupts the normal screen. Radar tracking resumes after `BATTLE MODE` finishes scrolling. In LAST_OF_2028, the repeating warning and countdown override radar and charging.
+Mode text temporarily interrupts the normal screen. Radar tracking resumes after `BATTLE MODE` finishes scrolling. In THE_LAST_OF_EE2028, the repeating warning and countdown override radar and charging.
 
 ### 2. IR threat / “zombie” detect
 | | |
@@ -50,13 +50,13 @@ Mode text temporarily interrupts the normal screen. Radar tracking resumes after
 | **Hooks** | Flag in `Read_Sensors()`; debounce + check IR polarity |
 | **Effort** | Low–medium |
 
-### 3. Richer LAST_OF_2028 / capacitor explode
+### 3. Richer THE_LAST_OF_EE2028 / capacitor explode
 | | |
 |--|--|
-| **What** | Start a 10-second countdown on entry. Scroll `LAST OF 2028` repeatedly, accelerate the buzzer beeps as `0` approaches, then show the explosion at `0` |
+| **What** | Start a 10-second countdown on entry. Scroll `THE LAST OF EE2028` repeatedly, accelerate the buzzer beeps as `0` approaches, then show the explosion at `0` |
 | **At zero** | Set `CAP_EXPLODE_Pin` **HIGH** to activate a relay-controlled safe effect; send sacrifice + `Cheerio!`, show the explosion frame, sound the final buzzer burst, blank the matrix and stop normal telemetry |
 | **Rescue** | A valid double-press before `0` cancels the countdown, keeps `CAP_EXPLODE_Pin` LOW and returns to Battle Mode |
-| **Hooks** | Non-blocking countdown and beep interval inside `Handle_Last_Of_2028_Mode()` using `HAL_GetTick()`; GPIO defaults LOW and changes HIGH only at `0` |
+| **Hooks** | Non-blocking countdown and beep interval inside `Handle_The_Last_Of_EE2028_Mode()` using `HAL_GetTick()`; GPIO defaults LOW and changes HIGH only at `0` |
 | **Effort** | Low–medium |
 
 The GPIO drives the relay module's control input, not a relay coil directly. The relay must switch only a safe, instructor-approved low-voltage simulation load. Do not rupture, short or overcharge a physical capacitor.
@@ -102,7 +102,7 @@ The GPIO drives the relay module's control input, not a relay coil directly. The
 | **What** | Put the system on (or beside) a real **UAV**: either STM32 as companion computer talking to a flight controller, or a small quad carrying the Discovery for a staged “spaceship drone” demo |
 | **Why** | Capstone story — the platform is actually a drone |
 | **Approaches** | (A) Companion UART/MAVLink to Pixhawk-class FC — STM32 does modes / sensors / aim, FC flies; (B) Tiny toy quad with Discovery strapped for static/slow demo; (C) Ground “UAV lite” rover if flight is blocked by lab rules |
-| **Hooks** | Arm/disarm tied to Standby vs Battle; LAST_OF_2028 → RTL or land; explode = motors cut + telemetry silence (safe fail) |
+| **Hooks** | Arm/disarm tied to Standby vs Battle; THE_LAST_OF_EE2028 → RTL or land; explode = motors cut + telemetry silence (safe fail) |
 | **Effort** | Very high (power, weight, crash risk, flight time) |
 | **Note** | Ship **#1–#4** solid first; treat UAV as the **final** stretch after mmWave aim + wireless telemetry |
 
@@ -113,7 +113,7 @@ The GPIO drives the relay module's control input, not a relay coil directly. The
 | Idea | Notes | Effort |
 |------|--------|--------|
 | **IR as soft “projectile”** | In Battle, IR trip while charged = fire (same as #1–2) | Low |
-| **Shake / impact hit** | On-kit accel spike → LAST_OF_2028 | Low |
+| **Shake / impact hit** | On-kit accel spike → THE_LAST_OF_EE2028 | Low |
 
 ---
 
@@ -131,7 +131,7 @@ The GPIO drives the relay module's control input, not a relay coil directly. The
 2. IR wave → threat + chirp → Battle  
 3. Matrix scrolls `BATTLE MODE` once, then returns to the active status screen
 4. PB charge → bar fills → armed matrix flashes → fire
-5. Flip → matrix repeatedly scrolls `LAST OF 2028`; 10-second countdown begins
+5. Flip → matrix repeatedly scrolls `THE LAST OF EE2028`; 10-second countdown begins
 6. Rescue before `0`, or hear accelerating beeps → explosion frame at `0` → silence
 
 **Advanced (#5–#6):**  
@@ -139,7 +139,7 @@ The GPIO drives the relay module's control input, not a relay coil directly. The
 8. Phone/laptop gets live Wi‑Fi or BLE telemetry
 
 **Final (#7):**  
-9. UAV armed in Battle; modes drive companion behaviour; safe land / cut on LAST_OF_2028 or explode
+9. UAV armed in Battle; modes drive companion behaviour; safe land / cut on THE_LAST_OF_EE2028 or explode
 
 ---
 
@@ -151,7 +151,7 @@ Typical course board: **B-L475E-IOT01A** (or **B-U585I-IOT02A**).
 |--------------------|----------|
 | `T`, `H` | HTS221 |
 | `P` | LPS22HB (U5: LPS22HH) |
-| `A`, `G` | LSM6DSL (U5: ISM330DHCX) — upside-down → LAST_OF_2028 |
+| `A`, `G` | LSM6DSL (U5: ISM330DHCX) — upside-down → THE_LAST_OF_EE2028 |
 | `M` | LIS3MDL (U5: IIS2MDCTR) |
 | Mode LED / PB | On-kit LD + B1 (EXTI) |
 | UART Command Center (#4) | ST-LINK Virtual COM |
@@ -170,7 +170,7 @@ Typical course board: **B-L475E-IOT01A** (or **B-U585I-IOT02A**).
 
 The **entire #1–#7 scope is not realistically achievable and demo-stable** in that time. The basic firmware plus **#1–#4** is realistic. One advanced feature may be attempted only after the core demo is stable.
 
-- **High feasibility:** basic state machine and sensors; matrix HUD; IR trigger; buzzer effects; LAST_OF_2028 sequence; UART telemetry.
+- **High feasibility:** basic state machine and sensors; matrix HUD; IR trigger; buzzer effects; THE_LAST_OF_EE2028 sequence; UART telemetry.
 - **Medium feasibility:** Wi‑Fi **or** BLE telemetry, provided the board support package and examples work quickly.
 - **Low feasibility:** mmWave tracking plus calibrated 2‑DOF auto-aim. The radar driver, target coordinates, servo mapping, mechanics and power supply create several integration risks.
 - **Very low feasibility:** a safe, reliable flying UAV integration. Flight-controller communication, mounting, weight, power, testing and safety can consume the whole project window.
@@ -187,7 +187,7 @@ The **entire #1–#7 scope is not realistically achievable and demo-stable** in 
 - **Days 1–3 — Student A:** state machine, PB timing, UART and sensor reads.
 - **Days 1–3 — Student B:** verify matrix, IR and buzzer separately with minimal test programs.
 - **Days 4–6 — Both:** integrate matrix HUD, charge/fire effects and IR threat trigger.
-- **Days 7–8 — Both:** implement and test LAST_OF_2028 rescue/timeout/explode behavior.
+- **Days 7–8 — Both:** implement and test THE_LAST_OF_EE2028 rescue/timeout/explode behavior.
 - **Days 9–10 — Student A:** telemetry and Command Center output.
 - **Days 9–10 — Student B:** wiring cleanup, non-blocking timing and hardware reliability tests.
 - **Days 11–12 — Both:** end-to-end integration, edge cases and repeatable demo script.

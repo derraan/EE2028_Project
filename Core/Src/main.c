@@ -30,7 +30,7 @@ extern void initialise_monitor_handles(void); /* for semi-hosting support (print
 typedef enum {
 	STANDBY_MODE,
 	BATTLE_MODE,
-	LAST_OF_2028,
+	THE_LAST_OF_EE2028,
 	SELF_DESTRUCT_TRIGGERED,
 	SELF_DESTRUCT_DEAD
 } DroneState_t;
@@ -43,7 +43,7 @@ bool button_was_pressed = false;
 uint32_t press_start_tick = 0;
 bool hold_action_triggered = false;
 float current_accel_z = 0.0f;
-int last_of_2028_rescue_attempts = 0;
+int the_last_of_ee2028_rescue_attempts = 0;
 
 /* Laser Gun Energy Tracking (Initialized to 10/10 full charge, remembers last charge) */
 int laser_charge = 10;
@@ -52,7 +52,7 @@ int laser_charge = 10;
 uint32_t tick_1s_telemetry = 0;
 uint32_t tick_1s_attack_msg = 0;
 uint32_t led_blink_tick = 0;
-uint32_t last_of_2028_entry_tick = 0;
+uint32_t the_last_of_ee2028_entry_tick = 0;
 uint32_t noble_sacrifice_tick = 0;
 bool sacrifice_sent = false;
 bool cheerio_sent = false;
@@ -108,14 +108,14 @@ int main(void)
 		float press_data = BSP_PSENSOR_ReadPressure();
 		float humid_data = BSP_HSENSOR_ReadHumidity();
 
-		/* --- Global Check for "The Last of 2028" (Upside Down) --- */
+		/* --- Global Check for "The Last of EE2028" (Upside Down) --- */
 		if ((current_state == STANDBY_MODE || current_state == BATTLE_MODE) && accel_data[2] < -4.0f)
 		{
-			current_state = LAST_OF_2028;
-			last_of_2028_entry_tick = HAL_GetTick();
+			current_state = THE_LAST_OF_EE2028;
+			the_last_of_ee2028_entry_tick = HAL_GetTick();
 			led_blink_tick = HAL_GetTick(); /* Reset blink timer for 2 Hz */
-			last_of_2028_rescue_attempts = 0; /* Reset attempt counter on entry */
-			printf("Drone is upside down! Entering LAST OF 2028.\r\n");
+			the_last_of_ee2028_rescue_attempts = 0; /* Reset attempt counter on entry */
+			printf("Drone is upside down! Entering THE LAST OF EE2028.\r\n");
 		}
 
 		/* --- 2. State Machine Handling --- */
@@ -203,7 +203,7 @@ int main(void)
 				}
 				break;
 
-			case LAST_OF_2028:
+			case THE_LAST_OF_EE2028:
 				/* LED blinking at 2 Hz (toggle every 250ms) */
 				if ((HAL_GetTick() - led_blink_tick) >= 250) {
 					led_blink_tick = HAL_GetTick();
@@ -302,21 +302,21 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 				}
 			}
 		}
-		else if (current_state == LAST_OF_2028)
+		else if (current_state == THE_LAST_OF_EE2028)
 		{
 			/* Rescue double press window: second press arrives within 500ms following first press counts as 1 rescue attempt */
 			if (time_since_last <= 500)
 			{
-				last_of_2028_rescue_attempts++;
-				printf("Rescue attempt %d/5 (Double Press detected)...\r\n", last_of_2028_rescue_attempts);
+				the_last_of_ee2028_rescue_attempts++;
+				printf("Rescue attempt %d/5 (Double Press detected)...\r\n", the_last_of_ee2028_rescue_attempts);
 
 				if (current_accel_z < -4.0f)
 				{
-					if (last_of_2028_rescue_attempts >= 5)
+					if (the_last_of_ee2028_rescue_attempts >= 5)
 					{
 						printf("5 rescue attempts failed while upside down! Drone self-destructing...\r\n");
 						current_state = SELF_DESTRUCT_TRIGGERED;
-						last_of_2028_rescue_attempts = 0;
+						the_last_of_ee2028_rescue_attempts = 0;
 					}
 					else
 					{
@@ -328,7 +328,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 					current_state = BATTLE_MODE;
 					led_blink_tick = HAL_GetTick();
 					printf("PB Rescue Action: Successfully reverted to Battle Mode.\r\n");
-					last_of_2028_rescue_attempts = 0;
+					the_last_of_ee2028_rescue_attempts = 0;
 				}
 				last_pb_press_time = 0;
 			}
