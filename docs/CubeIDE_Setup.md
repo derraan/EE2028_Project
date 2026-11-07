@@ -199,6 +199,7 @@ Only one program can hold the COM port: close Tera Term before connecting VESPER
 
 | Action | Matrix | Buzzer |
 |---|---|---|
+| Power-up (Enhanced) | — (servo on D5 sweeps centre → left → centre → right → centre, ~3.5 s; laser stays OFF; telemetry prints `Servo self-test …`) | Silent |
 | Boot (Standby) | Steady charge bar (full at 10/10) | Silent |
 | Double press → Battle | `BATTLE MODE` scrolls once | Three rising beeps |
 | In Battle, charge ≥ 5 | Charge bar **blinks** | — |

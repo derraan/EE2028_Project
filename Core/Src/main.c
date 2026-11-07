@@ -150,6 +150,9 @@ int main(void)
 		if (Enhancements_HW_SetupRadarAim(&ee_cfg) != 0) {
 			Telemetry_Printf("Radar/laser aim hardware init incomplete - continuing without it.");
 		}
+		/* Bench check: servo sweeps once so D5 wiring is visible without a radar.
+		 * The laser (D7) stays OFF. */
+		Enhancements_HW_ServoSelfTest();
 #endif
 		Enhancements_Init(&ee_cfg);
 	}

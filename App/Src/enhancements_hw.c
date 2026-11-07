@@ -3,6 +3,7 @@
  * @brief GPIO / I2C backends for the shared enhancements adapter.
  */
 #include "enhancements_hw.h"
+#include "telemetry_evt.h"
 #include <string.h>
 
 /* Pin aliases — B-L4S5I-IOT01A Arduino D2/D3/D4; override via Cube main.h. */
@@ -417,6 +418,45 @@ static void Laser_SetOutput(void *ctx, uint8_t on)
         return;
     }
     HAL_GPIO_WritePin(p->port, p->pin, (level != 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+/* Slew the servo to `to_us` in small steps so the sweep is gentle. */
+static void Servo_Glide(uint16_t from_us, uint16_t to_us, uint32_t ms)
+{
+    const uint32_t steps = 25U;
+    uint32_t i;
+    for (i = 1U; i <= steps; i++) {
+        int32_t us = (int32_t)from_us + (((int32_t)to_us - (int32_t)from_us) * (int32_t)i) / (int32_t)steps;
+        Servo_SetPulse(NULL, (uint16_t)us);
+        HAL_Delay(ms / steps);
+    }
+}
+
+void Enhancements_HW_ServoSelfTest(void)
+{
+    /* ±45° around the trimmed centre (~11.1 µs/°), inside EE_SERVO_PAN_LIMIT_DEG. */
+    const int32_t span = 500;
+    const uint16_t c = (uint16_t)EE_SERVO_CENTER_US;
+    const uint16_t left = (uint16_t)((int32_t)c - (span * (int32_t)EE_SERVO_DIRECTION));
+    const uint16_t right = (uint16_t)((int32_t)c + (span * (int32_t)EE_SERVO_DIRECTION));
+
+    if (s_servo_ready == 0U) {
+        Telemetry_Printf("Servo self-test skipped: TIM3 PWM on D5 did not start.");
+        return;
+    }
+    Laser_SetOutput(&s_laser_pin, 0U); /* laser never lights during the self-test */
+    Telemetry_Printf("Servo self-test (D5): centre -> left -> centre -> right -> centre. Laser stays OFF.");
+    Servo_SetPulse(NULL, c);
+    HAL_Delay(300U);
+    Servo_Glide(c, left, 500U);
+    HAL_Delay(250U);
+    Servo_Glide(left, c, 500U);
+    HAL_Delay(250U);
+    Servo_Glide(c, right, 500U);
+    HAL_Delay(250U);
+    Servo_Glide(right, c, 500U);
+    Laser_SetOutput(&s_laser_pin, 0U);
+    Telemetry_Printf("Servo self-test done (horn should be back at centre).");
 }
 
 static HAL_StatusTypeDef Radar_UartInit(void)

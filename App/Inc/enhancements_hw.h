@@ -42,6 +42,13 @@ int Enhancements_HW_Setup(Enhancements_Config_t *cfg, I2C_HandleTypeDef *hi2c);
  */
 int Enhancements_HW_SetupRadarAim(Enhancements_Config_t *cfg);
 
+/**
+ * Boot bench check for the pan servo on D5 (no radar needed): blocking ~3.5 s
+ * sweep centre → left → centre → right → centre (±45°). The laser is held OFF
+ * throughout. Call after Enhancements_HW_SetupRadarAim, before Enhancements_Init.
+ */
+void Enhancements_HW_ServoSelfTest(void);
+
 /** UART4 RX interrupt body — call it yourself if EE_RADAR_OWN_IRQ=0. */
 void Enhancements_HW_RadarIrq(void);
 
