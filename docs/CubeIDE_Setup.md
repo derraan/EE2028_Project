@@ -1,10 +1,19 @@
-# STM32CubeIDE Setup — link, build, flash
+# STM32CubeIDE Setup — install, link, build, flash
 
-How to turn this repository into a flashable STM32CubeIDE project for the **B-L4S5I-IOT01A**, without copying source files into the IDE workspace.
+How to install this repository as a flashable STM32CubeIDE project for the **B-L4S5I-IOT01A**, without copying source files into the IDE workspace.
 
 The repo holds application source only (`Core/Src/main.c`, `Core/Inc/drone.h`, `App/`). Startup code, HAL, CMSIS, the board BSP and the linker script come from the course **Assignment 2** CubeIDE project, which already matches how `main.c` is written (`HAL_Init()` + `BSP_*_Init()`, semihosting `printf`, no CubeMX-generated `MX_*_Init`).
 
-Verified on 2026-11-07 with STM32CubeIDE **1.19.0** (GNU Tools for STM32 13.3.rel1): the Debug and Enhanced configurations both compile and link. Neither has been run on the board yet (see §5 first-flash checks).
+**Status (2026-11-07):** STM32CubeIDE **1.19.0** (GNU Tools for STM32 13.3.rel1). Debug and Enhanced compile and link. The **Enhanced** build has been flashed and run on the board with the LED matrix and buzzer working. Radar / servo / laser hardware is not yet brought up.
+
+**Steps at a glance**
+
+1. Install CubeIDE and get the Assignment 2 project building (§2).
+2. Clone this repo (§2).
+3. Copy Assignment 2 into a new `EE2028_Project` and link the repo into it (§3.1–3.3).
+4. Add the `_kill` stub and the Enhanced build configuration (§3.4–3.5).
+5. Wire the Grove modules (§3.6).
+6. Build (§4), then flash with the OpenOCD debug probe (§5).
 
 ---
 
@@ -34,8 +43,17 @@ EE2028_Project/  (copy of Assignment2)
 ## 2. Prerequisites
 
 - STM32CubeIDE 1.19.0 (other 1.x versions should work; the toolchain path in §8 changes).
-- The course **Assignment 2** project (`Assignment2.zip`), already building and flashing on your board. It provides the BSP under `Drivers/BSP/B-L4S5I-IOT01`.
-- A clone of this repo, e.g. `C:\Users\<you>\Projects\EE2028_Project`, checked out on **`main`**.
+- The course **Assignment 2** project (`Assignment2.zip`), already building and flashing on your board. It provides the BSP under `Drivers/BSP/B-L4S5I-IOT01`. In CubeIDE: **File → Import → General → Existing Projects into Workspace → Select archive file** → `Assignment2.zip`, then build and flash it once to prove the board, cable and ST-LINK work.
+- Git, and a clone of this repo checked out on **`main`**:
+
+  ```bash
+  cd C:/Users/<you>/Projects
+  git clone https://github.com/derraan/EE2028_Project.git
+  cd EE2028_Project
+  git switch main
+  ```
+
+  To try an unmerged PR on the board, switch this folder to the PR branch (`git switch <branch>`), test, then switch back to `main` after it merges.
 
 > Keep the folder CubeIDE links to on `main`. CubeIDE builds whatever branch is checked out there. Do branch work in separate worktrees (`git worktree add ../EE2028_Project-<topic> -b <branch>`), merge via PR, then `git pull` in the main folder.
 
@@ -117,6 +135,25 @@ Add the macros to the **compiler** defines, not the assembler ones.
 
 Other tuning macros (servo trim, radar mirroring, laser offsets, matrix I2C handle) are listed in `docs/Radar_Aim_Design.md`, `README.md` (Build macros) and at the top of `App/Src/enhancements_hw.c`. Add them to the same Define symbols list when needed, e.g. `EE_SERVO_CENTER_US=1520`.
 
+### 3.6 Wiring (Enhanced build)
+
+No CubeMX pin setup is needed: the firmware configures every pin below itself. Every module is optional: a missing one is skipped and the drone still runs.
+
+| Module | Board pin | MCU pin / peripheral | Notes |
+|---|---|---|---|
+| Grove LED matrix (HT16K33) | **D15** SCL, **D14** SDA | PB8 / PB9, I2C1 (AF4) | Address 0x70. Brought up by `Enhancements_HW_MatrixI2C()` |
+| Grove buzzer (active) | **D2** | PD14 | ON/OFF rhythms only |
+| Grove IR reflective sensor | **D3** | PB0 | Active-LOW, internal pull-up |
+| Relay control (CAP_EXPLODE) | **D4** | PA3 | Goes HIGH once at self-destruct. Switch only an instructor-approved low-voltage load |
+| RD-03D radar TX → | **D0** | PA1, UART4_RX (AF8) | 256000 8N1, 3.3 V logic. Radar VCC = **5 V** |
+| RD-03D radar RX ← | **D1** | PA0, UART4_TX (AF8) | Firmware sends the multi-target command at boot |
+| Pan servo signal | **D5** | PB4, TIM3_CH1 (AF2) | 50 Hz. Power the servo from its **own 5 V** supply, common GND |
+| Laser module | **D7** | PA4 | Through an NPN/MOSFET switch, active-HIGH, driven LOW at boot |
+
+Share GND between the board and every module. On-board sensors stay on the BSP's I2C2 (PB10/PB11) and are not affected.
+
+> **RD-03E is not supported.** The radar code parses **RD-03D** frames and needs azimuth. An RD-03E (presence + distance only) wired to D0/D1 is ignored by the parser. Leave its RX unconnected so it does not receive the RD-03D boot command. RD-03E ranging is planned separately (Task 6a in `docs/Darren's_Tasks.md`).
+
 ---
 
 ## 4. Build
@@ -149,9 +186,27 @@ Tip: duplicate the launch once per configuration (`EE2028_Project Debug`, `EE202
 
 To get output on the ST-LINK virtual COM port for Tera Term / VESPER instead, see §9.
 
-### First-flash checks (from `docs/Next_Steps.md`)
+### First-flash checks
 
-Prove LED2, the USER button and one telemetry line on **Debug** before flashing **Enhanced** or wiring Grove hardware.
+**Debug (baseline)** — from `docs/Next_Steps.md`: prove LED2, the USER button and one telemetry line in the Console before flashing **Enhanced** or wiring Grove hardware.
+
+**Enhanced** — with the matrix and buzzer wired (§3.6):
+
+| Action | Matrix | Buzzer |
+|---|---|---|
+| Boot (Standby) | Steady charge bar (full at 10/10) | Silent |
+| Double press → Battle | `BATTLE MODE` scrolls once | Three rising beeps |
+| In Battle, charge ≥ 5 | Charge bar **blinks** | — |
+| Hold button with charge < 5 | — | Rough "brrr" (refused) |
+| Single press (recharge +3) | Bar grows | Short blip |
+| Hold to fire | Bar shrinks by 5 | "Pew" per shot |
+| Flip upside down | `THE LAST OF EE2028` scrolls, then digits 5…0 flash | Beeps that speed up |
+| Double press while still upside down | — | 300 ms error tone, then beeps resume |
+| Upright + double press (rescue) | `BATTLE MODE` scrolls | Two blips + long "saved" tone |
+| Wait out 10 s / 5 failed rescues | Explosion, then blank | Final burst, then silent. Relay D4 HIGH |
+| RD-03D locks a person (when fitted) | Standby: dial needle. Battle: line at their azimuth (blinks if armed) | Threat chirp in Battle |
+
+If text on the matrix is mirrored or upside down, note which and see `docs/LED_Matrix_Design.md` §3.1.
 
 ---
 
@@ -165,7 +220,7 @@ Prove LED2, the USER button and one telemetry line on **Debug** before flashing 
 | `App/Test/*` | No (excluded on purpose) |
 | HAL config, `stm32l4xx_it.c`, startup, linker script, BSP | Local to the IDE project. Not in git |
 
-- After `git pull` or edits made outside the IDE: press **F5** on the project. Optional: **Window → Preferences → General → Workspace → Refresh using native hooks or polling**.
+- After `git pull`, switching branches, or edits made outside the IDE: press **F5** on the project, then build (use **Project → Clean…** first if files were added or removed). Optional: **Window → Preferences → General → Workspace → Refresh using native hooks or polling**.
 - If a file open in the editor changed on disk, reload it when asked. Do not save over it.
 - Saving a linked file in CubeIDE edits the repo file; it shows in `git status`.
 - Back up before big changes: copy the repo folder and the workspace project folder elsewhere (outside `Projects/` and the workspace).
@@ -187,6 +242,9 @@ Prove LED2, the USER button and one telemetry line on **Debug** before flashing 
 | Launch fails: `Failed to execute MI command: monitor arm semihosting enable … Protocol error with Rcmd` | Debug probe set to **ST-LINK GDB server**, which does not understand this OpenOCD command (CubeIDE can switch the probe when a launch is edited or created with **Debug As**) | Debugger tab → **ST-LINK (OpenOCD)**, port 3333, Automated script (§5 step 4) |
 | `undefined reference to 'initialise_monitor_handles'` | Building **Release**, which does not link `rdimon` | Use Debug or Enhanced (§3.5) |
 | Board appears hung, no output | Started without the debugger while semihosting is on | Start with **Debug** (§5) |
+| Matrix stays dark on Enhanced | Not on D15/D14, no power/GND, or the build is **Debug** (enhancements compiled out) | Check §3.6 wiring and that the **Enhanced** `.elf` was flashed. The firmware skips a matrix that does not answer at 0x70 |
+| No buzzer / matrix changes after `git pull` | CubeIDE did not see the new files | **F5**, **Project → Clean…**, rebuild |
+| Radar never locks with an RD-03E | Wrong module: the parser is for RD-03D | See the RD-03E note in §3.6 |
 
 ---
 
@@ -208,8 +266,7 @@ make -j8 all
 ## 9. Not done yet
 
 - **USART telemetry for VESPER / Tera Term.** The Assignment 2 template does not initialise USART1, so telemetry still goes over semihosting. To switch: initialise USART1 @ 115200 8N1 (`huart1`), copy `App/Src/telemetry_uart_hal.c.example` to a `.c` file in the build, add `EE_TELEMETRY_USART=1`. See the comments in that file and `docs/Telemetry_EVT_Contract.md`.
-- **LED matrix wiring check.** The Enhanced build brings up I2C1 on D15/D14 (PB8 SCL / PB9 SDA) for the HT16K33 by itself. Plug the Grove matrix into the Arduino I2C header; if it is missing the firmware simply runs without it.
-- **Radar hardware bring-up.** Servo direction/trim, radar mirroring, parallax and laser-off-at-boot checks: `docs/Radar_Aim_Design.md`.
+- **Radar hardware bring-up** (RD-03D). Servo direction/trim, radar mirroring, parallax and laser-off-at-boot checks: `docs/Radar_Aim_Design.md`.
 - The project links the repo by absolute path. If the repo moves, update the links (**Properties → Resource → Linked Resources**) and the two include paths.
 
 ---
@@ -225,4 +282,4 @@ make -j8 all
 | Old bench project (per-driver tests, copy-based) | `workspace_1.19.0\EE2028_Project_Test`. Not the flashing target |
 | Repo backup before the 2026-11-07 sync | `C:\Users\darre\Backups\EE2028_Project_2026-11-07` |
 
-This project was created by editing `.project` / `.cproject` directly rather than through the GUI. The result is equivalent to §3. Fixed configuration IDs and the launch file were renamed from `Assignment2` to `EE2028_Project`. The launch still references the template's OpenOCD script `Assignment2.cfg`, which is correct.
+This project was created by editing `.project` / `.cproject` directly rather than through the GUI. The result is equivalent to §3. The launch file was renamed from `Assignment2` to `EE2028_Project`; it uses **ST-LINK (OpenOCD)** with an automatically generated `EE2028_Project.cfg` and flashes `Enhanced/EE2028_Project.elf`. `rdimon_stubs.c` is in the project's own `Core/Src`.
