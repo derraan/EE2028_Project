@@ -456,6 +456,13 @@ static HAL_StatusTypeDef Radar_UartInit(void)
         return HAL_ERROR;
     }
 
+    /* 8-byte RX FIFO: at the 4 MHz reset clock a byte arrives every ~156
+     * cycles, so the FIFO absorbs ISR latency (SysTick, EXTI, I2C waits)
+     * instead of overrunning. RXNE now means "FIFO not empty"; the ISR
+     * drains everything available per entry. */
+    (void)HAL_UARTEx_SetRxFifoThreshold(&s_radar_uart, UART_RXFIFO_THRESHOLD_1_8);
+    (void)HAL_UARTEx_EnableFifoMode(&s_radar_uart);
+
     s_rx_head = 0U;
     s_rx_tail = 0U;
     __HAL_UART_ENABLE_IT(&s_radar_uart, UART_IT_RXNE);

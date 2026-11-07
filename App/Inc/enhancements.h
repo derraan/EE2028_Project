@@ -78,6 +78,9 @@ uint8_t Enhancements_FinalEffectsDone(uint32_t now_ms);
 /** Current radar track (never NULL after Init; valid=0 when no zombie). */
 const RadarTarget_t *Enhancements_RadarTarget(void);
 
+/** RD-03D frames parsed OK / with a bad footer since boot (bring-up check). */
+void Enhancements_RadarFrameStats(uint32_t *frames_ok, uint32_t *frames_bad);
+
 /** Pan / laser controller state (bench + debug). */
 const LaserAim_HandleTypeDef *Enhancements_LaserAim(void);
 

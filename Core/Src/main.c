@@ -552,6 +552,23 @@ static void Enhancements_Tick(void)
 	DroneStatus_t st;
 	Fill_DroneStatus(&st);
 	Enhancements_Update(&st, HAL_GetTick());
+
+#if defined(EE_RADAR_AIM) && (EE_RADAR_AIM != 0)
+	/* RD-03D link health every 5 s (bring-up): rx should climb ~300 B/s with
+	 * ok frames ~10/s; bad/drop/err should stay near 0. rx=0 → check wiring. */
+	{
+		static uint32_t radar_link_tick = 0;
+		if ((HAL_GetTick() - radar_link_tick) >= 5000U) {
+			uint32_t rx, dropped, errors, ok, bad;
+			radar_link_tick = HAL_GetTick();
+			Enhancements_HW_RadarStats(&rx, &dropped, &errors);
+			Enhancements_RadarFrameStats(&ok, &bad);
+			Telemetry_Printf("Radar link: rx=%lu B, frames ok=%lu bad=%lu, dropped=%lu, uart_err=%lu",
+				(unsigned long)rx, (unsigned long)ok, (unsigned long)bad,
+				(unsigned long)dropped, (unsigned long)errors);
+		}
+	}
+#endif
 }
 #endif
 

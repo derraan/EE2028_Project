@@ -103,7 +103,7 @@ The firmware emits a line on lock, then every 250 ms while locked (`EE_RADAR_EVT
 ## Bring-up checklist
 
 1. **Laser off at boot**: check D7 LOW, both with and without the radar connected.
-2. **Frames**: `Enhancements_HW_RadarStats()` shows `rx` climbing at about 300 B/s and `errors` near 0.
+2. **Frames**: the Enhanced build prints `Radar link: rx=… B, frames ok=… bad=…, dropped=…, uart_err=…` every 5 s on the telemetry COM port (VESPER log / Tera Term). Healthy: `rx` grows ~1500 B and `ok` ~50 per line, `bad`/`dropped`/`uart_err` stay near 0. `rx=0` → radar TX not reaching D0 (wiring, 5 V power, GND). `rx` grows but `ok=0` → wrong module or baud (an RD-03E sends `AA AA …` frames). UART4 runs with its 8-byte RX FIFO enabled, and the multi-target command is resent at +1 s and +3 s in case the radar was still booting.
 3. **Sign**: stand 2 m ahead and step right. `EVT RADAR az` should be > 0. Otherwise set `EE_RADAR_MIRROR_X=-1`.
 4. **Servo direction and trim**: with no target, adjust `EE_SERVO_CENTER_US` until the laser points along radar boresight. Flip `EE_SERVO_DIRECTION` if it tracks the wrong way.
 5. **Parallax**: measure the laser offset, then check at 1 m and 4 m that the dot stays on the chest.
