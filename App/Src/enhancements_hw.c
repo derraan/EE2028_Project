@@ -162,6 +162,87 @@ HT16K33_HandleTypeDef *Enhancements_HW_Matrix(void)
     return (s_matrix_ready != 0U) ? &s_matrix : NULL;
 }
 
+/* ----------------------------------------------------------------------
+ * Matrix I2C bus: I2C1 on Arduino D15 (PB8, SCL) / D14 (PB9, SDA), AF4 —
+ * the bus the HT16K33 was hardware-verified on. Self-contained like the radar
+ * UART because the lab project has no MX_I2C1_Init. The on-board sensors stay
+ * on the BSP's I2C2 (PB10/PB11); nothing here touches that bus.
+ * ---------------------------------------------------------------------- */
+static I2C_HandleTypeDef s_matrix_i2c;
+
+/* Standard-mode (~100 kHz) TIMINGR for the given I2C kernel clock. Computed
+ * because the lab firmware runs on the 4 MHz MSI reset clock, where the
+ * CubeMX value (0x30A175AB, made for a PLL clock) would be far too slow. */
+static uint32_t MatrixI2C_Timing(uint32_t i2c_clk_hz)
+{
+    uint32_t presc;
+    uint32_t f;
+    uint32_t scll;
+    uint32_t sclh;
+    uint32_t scldel;
+    uint32_t sdadel;
+
+    presc = (i2c_clk_hz + 3999999U) / 4000000U; /* aim for ≤4 MHz tick */
+    presc = (presc == 0U) ? 0U : (presc - 1U);
+    if (presc > 15U) {
+        presc = 15U;
+    }
+    f = i2c_clk_hz / (presc + 1U);
+
+    scll = (f / 200000U);            /* 5.0 µs low  (min 4.7) */
+    sclh = (f * 21U) / 5000000U;     /* 4.2 µs high (min 4.0) */
+    scldel = f / 1000000U;           /* 1.0 µs data setup     */
+    sdadel = f / 2000000U;           /* 0.5 µs data hold      */
+
+    scll = (scll == 0U) ? 0U : (scll - 1U);
+    sclh = (sclh == 0U) ? 0U : (sclh - 1U);
+    scldel = (scldel == 0U) ? 0U : (scldel - 1U);
+    if (scll > 255U) { scll = 255U; }
+    if (sclh > 255U) { sclh = 255U; }
+    if (scldel > 15U) { scldel = 15U; }
+    if (sdadel > 15U) { sdadel = 15U; }
+
+    return (presc << 28) | (scldel << 20) | (sdadel << 16) | (sclh << 8) | scll;
+}
+
+I2C_HandleTypeDef *Enhancements_HW_MatrixI2C(void)
+{
+    GPIO_InitTypeDef gpio;
+
+    if (s_matrix_i2c.Instance != NULL) {
+        return &s_matrix_i2c; /* already up */
+    }
+
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+    __HAL_RCC_I2C1_CONFIG(RCC_I2C1CLKSOURCE_PCLK1);
+    __HAL_RCC_I2C1_CLK_ENABLE();
+
+    gpio.Pin = GPIO_PIN_8 | GPIO_PIN_9; /* PB8 = SCL (D15), PB9 = SDA (D14) */
+    gpio.Mode = GPIO_MODE_AF_OD;
+    gpio.Pull = GPIO_PULLUP;            /* Grove board has its own pull-ups too */
+    gpio.Speed = GPIO_SPEED_FREQ_HIGH;
+    gpio.Alternate = GPIO_AF4_I2C1;
+    HAL_GPIO_Init(GPIOB, &gpio);
+
+    (void)memset(&s_matrix_i2c, 0, sizeof(s_matrix_i2c));
+    s_matrix_i2c.Instance = I2C1;
+    s_matrix_i2c.Init.Timing = MatrixI2C_Timing(HAL_RCC_GetPCLK1Freq());
+    s_matrix_i2c.Init.OwnAddress1 = 0U;
+    s_matrix_i2c.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+    s_matrix_i2c.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+    s_matrix_i2c.Init.OwnAddress2 = 0U;
+    s_matrix_i2c.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+    s_matrix_i2c.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+    s_matrix_i2c.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+    if (HAL_I2C_Init(&s_matrix_i2c) != HAL_OK) {
+        s_matrix_i2c.Instance = NULL;
+        return NULL;
+    }
+    (void)HAL_I2CEx_ConfigAnalogFilter(&s_matrix_i2c, I2C_ANALOGFILTER_ENABLE);
+    (void)HAL_I2CEx_ConfigDigitalFilter(&s_matrix_i2c, 0U);
+    return &s_matrix_i2c;
+}
+
 /* ======================================================================
  * Enhancement #5 — RD-03D radar (UART4) + pan servo (TIM3_CH1) + laser.
  * Self-contained peripheral bring-up: the lab project initialises the board

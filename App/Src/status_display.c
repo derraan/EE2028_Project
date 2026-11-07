@@ -11,6 +11,14 @@
 #define STATUS_COUNTDOWN_MS              11000U
 #define STATUS_COUNTDOWN_FLASH_MIN_MS       40U
 #define STATUS_COUNTDOWN_FLASH_STEP_MS      45U
+/*
+ * Live path (drone rescue clock): scroll the banner until this much time is
+ * left, then switch to the flashing digits. One banner pass is ~5.1 s
+ * (102 columns at STATUS_LAST_SCROLL_MS), so a 10 s window shows it once.
+ */
+#ifndef STATUS_LIVE_DIGITS_MS
+#define STATUS_LIVE_DIGITS_MS             5000U
+#endif
 
 typedef struct {
     char ch;
@@ -286,14 +294,16 @@ static StatusScreen_t ResolveScreen(const StatusDisplay_HandleTypeDef *h)
     if (h->battle_active != 0U) {
         return STATUS_SCREEN_BATTLE_TEXT;
     }
+    /* A locked target is the most actionable thing on the HUD: it beats the
+     * armed flash (the line itself flashes when armed) and the charge bar. */
+    if (h->azimuth < 8U) {
+        return STATUS_SCREEN_RADAR;
+    }
     if (h->armed != 0U) {
         return STATUS_SCREEN_ARMED;
     }
     if (h->charge > 0U) {
         return STATUS_SCREEN_CHARGE;
-    }
-    if (h->azimuth < 8U) {
-        return STATUS_SCREEN_RADAR;
     }
     return STATUS_SCREEN_BLANK;
 }
@@ -403,7 +413,13 @@ void StatusDisplay_SetRescueRemainingMs(StatusDisplay_HandleTypeDef *h,
     h->use_external_remaining = 1U;
     h->rescue_remaining_ms = remaining_ms;
     h->last_active = 1U;
-    h->countdown_on = 1U; /* digits driven by drone clock */
+
+    /* Banner first, digits for the last STATUS_LIVE_DIGITS_MS (drone clock). */
+    if ((remaining_ms <= STATUS_LIVE_DIGITS_MS) && (h->countdown_on == 0U)) {
+        h->countdown_on = 1U;
+        h->scroll_col = 0U;
+        h->dirty = 1U;
+    }
 
     if (remaining_ms == 0U) {
         next_val = 0U;
@@ -620,8 +636,17 @@ HAL_StatusTypeDef StatusDisplay_Update(StatusDisplay_HandleTypeDef *h, uint32_t 
             break;
 
         case STATUS_SCREEN_RADAR:
+            if ((h->armed != 0U) &&
+                ((now_ms - h->last_step_ms) >= STATUS_ARMED_FLASH_MS)) {
+                draw_now = 1U;
+            }
             if (draw_now != 0U) {
-                Draw_Radar(frame, h->azimuth, h->radar_style);
+                if ((h->armed != 0U) &&
+                    (((now_ms / STATUS_ARMED_FLASH_MS) & 1U) == 0U)) {
+                    Frame_Clear(frame); /* armed: target line blinks */
+                } else {
+                    Draw_Radar(frame, h->azimuth, h->radar_style);
+                }
             }
             break;
 

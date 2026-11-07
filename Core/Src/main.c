@@ -22,12 +22,16 @@
 #if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
 #include "enhancements.h"
 #include "enhancements_hw.h"
-/* When CubeMX generates I2C for the HT16K33, declare the handle here, e.g.:
- *   extern I2C_HandleTypeDef hi2c2;
- * and pass &hi2c2 to Enhancements_HW_Setup. NULL skips the matrix safely. */
+/* HT16K33 matrix bus. Default: the adapter brings up I2C1 on D15/D14 itself
+ * (the lab project has no MX_I2C1_Init). Override with -DEE_MATRIX_I2C=NULL
+ * to skip the matrix, or point it at a CubeMX handle (e.g. &hi2c1). */
 #ifndef EE_MATRIX_I2C
-#define EE_MATRIX_I2C NULL
+#define EE_MATRIX_I2C Enhancements_HW_MatrixI2C()
 #endif
+/* One-shot drone actions the HUD / buzzer react to (no-op without enhancements). */
+#define EE_EVENT(evt) Enhancements_OnEvent((evt), HAL_GetTick())
+#else
+#define EE_EVENT(evt) ((void)0)
 #endif
 
 /* CubeIDE console debug only — mission / VESPER traffic uses Telemetry_*. */
@@ -233,6 +237,7 @@ int main(void)
 						if (!pb_low_charge_warned) {
 							Telemetry_Printf("Laser charge too low (%d/10) to fire! Please single-press to recharge the laser gun.", laser_charge);
 							pb_low_charge_warned = true;
+							EE_EVENT(DRONE_EVENT_LASER_DENIED);
 						}
 					}
 					else if ((HAL_GetTick() - pb_last_fire_tick) >= PB_FIRE_PERIOD_MS) {
@@ -240,9 +245,7 @@ int main(void)
 						laser_charge -= 5;
 						Telemetry_Printf("Laser gun fired continuously! PEW PEW! (Remaining charge: %d/10)", laser_charge);
 						Telemetry_EvtFire((uint8_t)laser_charge); /* charge AFTER the shot */
-#if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
-						Enhancements_OnEvent(DRONE_EVENT_LASER_FIRED, HAL_GetTick());
-#endif
+						EE_EVENT(DRONE_EVENT_LASER_FIRED);
 						if (laser_charge < 5) {
 							Telemetry_Printf("Laser charge too low (%d/10) to fire! Please single-press to recharge the laser gun.", laser_charge);
 							pb_low_charge_warned = true;
@@ -438,6 +441,7 @@ void PB_OnDoublePress(void)
 			}
 			else {
 				Telemetry_Printf("Drone is still upside down! Flip upright and double press to rescue.");
+				EE_EVENT(DRONE_EVENT_RESCUE_FAILED);
 			}
 		}
 		else {
@@ -464,6 +468,7 @@ void PB_OnSinglePress(void)
 		}
 		Telemetry_Printf("Laser recharging... Current charge: %d/10", laser_charge);
 		Telemetry_EvtCharge((uint8_t)laser_charge);
+		EE_EVENT(DRONE_EVENT_LASER_RECHARGED);
 	}
 	else {
 		Telemetry_Printf("Laser charge is already sufficient (>=5/10). Hold button >500ms to fire! Or double-press within 500ms to return to standby mode");
@@ -502,10 +507,8 @@ void Enter_Self_Destruct(const char *reason)
 	cheerio_sent = false;
 	the_last_of_2028_rescue_attempts = 0;
 	PB_CancelPendingSingle();
-#if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
 	/* Both timeout and fifth failed rescue converge here — emit once. */
-	Enhancements_OnEvent(DRONE_EVENT_SELF_DESTRUCT_STARTED, HAL_GetTick());
-#endif
+	EE_EVENT(DRONE_EVENT_SELF_DESTRUCT_STARTED);
 }
 
 #if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)

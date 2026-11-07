@@ -3,7 +3,8 @@
  * @brief Board backends for matrix / buzzer / IR / relay (Cube pin aliases).
  *
  * Board of record B-L4S5I-IOT01A Arduino pins (lab Cube main.h / .ioc):
- *   Matrix HT16K33  — I2C (inject handle; typically I2C1 Arduino D14/D15 or free bus)
+ *   Matrix HT16K33  — I2C1 Arduino D15/D14 (PB8 SCL / PB9 SDA), addr 0x70,
+ *                     brought up by Enhancements_HW_MatrixI2C()
  *   Buzzer          — D2  (ARD_D2 / PD14)
  *   IR reflective   — D3  (ARD_D3 / PB0), active-LOW
  *   CAP_EXPLODE     — D4  (ARD_D4 / PA3)
@@ -50,6 +51,14 @@ void Enhancements_HW_RadarStats(uint32_t *rx, uint32_t *dropped, uint32_t *error
 
 /** Matrix device handle used when I2C was provided (else NULL). */
 HT16K33_HandleTypeDef *Enhancements_HW_Matrix(void);
+
+/**
+ * Bring up I2C1 on Arduino D15/D14 (PB8 SCL / PB9 SDA) for the HT16K33 and
+ * return its handle; NULL if HAL_I2C_Init fails. Idempotent. Default source
+ * of EE_MATRIX_I2C in main.c — pass the result to Enhancements_HW_Setup.
+ * A missing / unpowered matrix simply NACKs and the adapter runs without it.
+ */
+I2C_HandleTypeDef *Enhancements_HW_MatrixI2C(void);
 
 #ifdef __cplusplus
 }

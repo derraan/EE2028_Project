@@ -250,10 +250,11 @@ Optional enhancement **modules and the shared adapter already live under `App/`*
 
 - [x] HT16K33 HAL-I2C driver (`App/Src/ht16k33.c`): oscillator on, display on, brightness, clear and frame write.
 - [x] Compact 8×8 font, charge bar, armed flash, radar line, countdown digits and explosion (`status_display.c`).
-- [x] Display priority arbitration (explosion → Last → Battle banner → armed → charge → radar).
+- [x] Display priority arbitration (explosion → Last → Battle banner → locked radar → armed → charge).
 - [x] Non-blocking scroll / flash driven by `HAL_GetTick()` / injected `now_ms`.
-- [ ] Verify row/column orientation on the linked Cube I2C bus (`EE_MATRIX_I2C`).
-- [ ] Confirm live path uses one 10 s `rescue_remaining_ms` clock (not the harness ~21 s sequence).
+- [x] Live matrix bus: I2C1 D15/D14 brought up by `Enhancements_HW_MatrixI2C()`.
+- [ ] Verify row/column orientation on the live I2C1 bus.
+- [x] Live path uses one 10 s `rescue_remaining_ms` clock: banner, then digits for the last 5 s (host test).
 
 ### IR reflective sensor
 

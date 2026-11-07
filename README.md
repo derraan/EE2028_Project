@@ -64,8 +64,8 @@ Do not “fix” these from older checklist wording without a focused patch:
 
 | Module | Pin / bus | Behaviour |
 |--------|-----------|-----------|
-| 8×8 matrix HUD | I2C (`EE_MATRIX_I2C`; `NULL` skips safely) | Charge bar, armed flash, `BATTLE MODE` / `THE LAST OF EE2028`, countdown, explosion |
-| Buzzer | D2 = PD14 | Chirp, fire, countdown, final burst |
+| 8×8 matrix HUD | I2C1 D15/D14 (PB8/PB9), brought up by the adapter (`EE_MATRIX_I2C=NULL` skips) | Charge bar, armed flash, radar lock (dial / line), `BATTLE MODE` / `THE LAST OF EE2028` banner, countdown digits, explosion |
+| Buzzer | D2 = PD14 | Battle entry, recharge / denied, fire, threat chirp, accelerating countdown, rescue OK / fail, final burst |
 | IR sensor | D3 = PB0 (active-LOW) | Detect → log + chirp |
 | Relay `CAP_EXPLODE` | D4 = PA3 | HIGH on self-destruct start (safe sim load only) |
 
@@ -101,6 +101,8 @@ More UI detail: [Command/README.md](Command/README.md).
 
 ### B. Link a CubeIDE project (required to flash)
 
+**Step-by-step guide: [docs/CubeIDE_Setup.md](docs/CubeIDE_Setup.md).** It copies the Assignment 2 project, links this repo's `Core/Src/main.c`, `Core/Inc/drone.h` and `App/` into it, and adds Debug (baseline) and Enhanced build configurations. It also covers building, flashing and troubleshooting. Summary:
+
 1. In STM32CubeIDE, create or open a **B-L4S5I-IOT01A** project; keep the `.ioc` in (or next to) this repo.
 2. Add `App/Inc` + `App/Src` (and `Core/` app files) to include paths and the build.
 3. Confirm USER button EXTI on **both edges**, USART1 @ **115200 8N1** (ST-LINK VCP), I2C2 for on-board sensors.
@@ -117,9 +119,9 @@ Walk the acceptance list in Next Steps before treating the demo as done.
 
 ### D. Turn on Grove enhancements
 
-1. Wire: buzzer **D2**, IR **D3**, relay control **D4** (relay switches only an instructor-approved low-voltage load). Matrix on a free I2C bus; scan the HT16K33 address.
-2. Build with `-DEE_ENHANCEMENTS=1`.
-3. After `MX_I2Cx_Init`, pass the matrix handle into `Enhancements_HW_Setup` / `EE_MATRIX_I2C` (or leave `NULL` to skip the matrix).
+1. Wire: buzzer **D2**, IR **D3**, relay control **D4** (relay switches only an instructor-approved low-voltage load). Matrix on the Arduino I2C pins **D15 (SCL) / D14 (SDA)**, address 0x70.
+2. Build with `-DEE_ENHANCEMENTS=1` (the CubeIDE **Enhanced** configuration).
+3. The adapter brings up I2C1 for the matrix itself. To use a CubeMX handle instead, define `EE_MATRIX_I2C` as `&hi2c1`; define it as `NULL` to skip the matrix.
 4. Re-run the mandatory flow; confirm matrix banners, chirps, and relay only at self-destruct.
 
 **Bench without the full drone loop:** `-DEE_ENHANCEMENTS=1 -DEE_BENCH=1` and `Enhancements_Bench_Init` / `Update` on Virtual COM.
