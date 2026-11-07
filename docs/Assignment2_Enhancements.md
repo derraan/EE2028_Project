@@ -26,7 +26,7 @@ High-impact extras for the spaceship drone, biased toward **hardware we already 
 | | |
 |--|--|
 | **What** | One 8×8 display presents every main feature: charge state, armed state, radar azimuth, mode changes and self-destruct countdown |
-| **Charging** | Fill a 0–8 column progress bar. Once fully charged / armed, flash the full matrix until fired |
+| **Charging** | Fill a 0–8 column progress bar. Once armed (charge ≥ 5/10 in Battle), the bar itself blinks until charge drops below 5 (the rest of the matrix stays dark) |
 | **Radar** | Draw a moving vertical line whose horizontal position represents the locked RD-03D target's azimuth, left to right (Battle). Standby shows the same lock as a 180° dial needle. Fed live by the adapter (`RadarTrack_MatrixColumn`) |
 | **Mode text** | Scroll `BATTLE MODE` once when Battle begins. Scroll `THE LAST OF EE2028` repeatedly for the whole THE_LAST_OF_2028 mode |
 | **Countdown** | Live path: one 10 s drone clock via `rescue_remaining_ms` / `StatusDisplay_SetRescueRemainingMs`. Harness may still use a longer standalone sequence. At `0`, explosion frame then blank |

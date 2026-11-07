@@ -210,18 +210,21 @@ static void Test_BattleEntryCueAndHud(void)
     CHECK(OnTime(t0, t0 + 700U) >= 280U && OnTime(t0, t0 + 700U) <= 330U,
           "battle entry on-time ~300 ms, got %u", (unsigned)OnTime(t0, t0 + 700U));
 
-    /* BATTLE MODE scroll (~3.6 s), then armed full-matrix flash. */
+    /* BATTLE MODE scroll (~3.6 s), then the armed charge bar blinks. Charge 6
+     * = 5 of 8 columns, so a bar flash is distinguishable from a full flash. */
+    s_st.charge = 6U;
     Tick(4000U, 10U);
     for (i = 0; i < 20; i++) {
         Tick(10U, 10U);
-        if (FrameIs(0xFFU)) {
+        if (FrameIs(0x1FU)) {
             saw_on = 1;
         }
         if (FrameIs(0x00U)) {
             saw_off = 1;
         }
+        CHECK(!FrameIs(0xFFU), "armed must not flash the whole matrix");
     }
-    CHECK(saw_on && saw_off, "armed with no target should flash the full matrix");
+    CHECK(saw_on && saw_off, "armed with no target should blink the charge bar");
 }
 
 static void Test_RechargeAndDenied(void)
@@ -374,7 +377,7 @@ static void Test_RadarPriority(void)
         saw_full |= FrameIs(0xFFU);
     }
     CHECK(saw_line && saw_blank, "locked + armed: target line should blink");
-    CHECK(!saw_full, "locked target must beat the armed full flash");
+    CHECK(!saw_full, "locked target must beat the armed charge-bar flash");
 
     StatusDisplay_SetArmed(&h, 0U);
     t += 10U;

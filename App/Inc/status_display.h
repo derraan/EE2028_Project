@@ -6,7 +6,7 @@
 /*
  * Screens in ResolveScreen() priority order (highest first):
  * EXPLOSION > LAST_2028 > BATTLE_TEXT > RADAR (locked target; blinks if armed)
- * > ARMED > CHARGE > BLANK.
+ * > ARMED (charge bar blinks) > CHARGE (steady bar) > BLANK.
  */
 typedef enum {
     STATUS_SCREEN_BLANK = 0,

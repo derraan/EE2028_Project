@@ -621,10 +621,11 @@ HAL_StatusTypeDef StatusDisplay_Update(StatusDisplay_HandleTypeDef *h, uint32_t 
                 draw_now = 1U;
             }
             if (draw_now != 0U) {
-                uint8_t i;
-                uint8_t on = (((now_ms / STATUS_ARMED_FLASH_MS) & 1U) != 0U) ? 1U : 0U;
-                for (i = 0U; i < 8U; i++) {
-                    frame[i] = (on != 0U) ? 0xFFU : 0x00U;
+                /* Armed: the charge bar itself blinks (not the whole matrix). */
+                if (((now_ms / STATUS_ARMED_FLASH_MS) & 1U) != 0U) {
+                    Draw_ChargeBar(frame, h->charge);
+                } else {
+                    Frame_Clear(frame);
                 }
             }
             break;

@@ -318,8 +318,8 @@ Resolved in `ResolveScreen()`:
 1. Explosion / terminal blank  
 2. THE_LAST_OF_2028 sequence  
 3. One-time BATTLE MODE scroll  
-4. Radar: **locked target** (line or dial). When armed, the target line blinks at the armed-flash rate instead of the full matrix flashing  
-5. Armed flash (no target)  
+4. Radar: **locked target** (line or dial). When armed, the target line blinks at the armed-flash rate  
+5. Armed (no target): the **charge bar blinks** at `STATUS_ARMED_FLASH_MS` (was a full-matrix `0xFF`/`0x00` flash until 2026-11-07)  
 6. Charge bar  
 7. Blank  
 
@@ -331,7 +331,7 @@ Live screen per drone mode (adapter, `enhancements.c`):
 |---|---|
 | Standby | Locked target → dial needle; else charge bar |
 | Battle entry | `BATTLE MODE` scroll once |
-| Battle | Locked target → line (blinks if armed); else armed flash (charge ≥ 5) or charge bar |
+| Battle | Locked target → line (blinks if armed); else charge bar, blinking when armed (charge ≥ 5) |
 | THE_LAST_OF_2028 | Banner scroll, then digits for the last 5 s |
 | Self-destruct | Explosion, then blank |
 
