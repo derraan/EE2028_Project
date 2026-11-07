@@ -77,6 +77,28 @@ static void Relay_SetOutput(void *ctx, uint8_t high)
                       (high != 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
+/*
+ * The lab project has no CubeMX MX_GPIO_Init, so nothing else turns these port
+ * clocks on (GPIOD in particular: without this the buzzer on PD14 stays silent
+ * because writes to an unclocked port are ignored). Enabling twice is harmless.
+ */
+static void GpioClockEnable(GPIO_TypeDef *port)
+{
+    if (port == GPIOA) {
+        __HAL_RCC_GPIOA_CLK_ENABLE();
+    } else if (port == GPIOB) {
+        __HAL_RCC_GPIOB_CLK_ENABLE();
+    } else if (port == GPIOC) {
+        __HAL_RCC_GPIOC_CLK_ENABLE();
+    } else if (port == GPIOD) {
+        __HAL_RCC_GPIOD_CLK_ENABLE();
+    } else if (port == GPIOE) {
+        __HAL_RCC_GPIOE_CLK_ENABLE();
+    } else {
+        /* other ports unused by the enhancements */
+    }
+}
+
 static void InitOutputLow(GPIO_TypeDef *port, uint16_t pin)
 {
     GPIO_InitTypeDef gpio;
@@ -84,7 +106,7 @@ static void InitOutputLow(GPIO_TypeDef *port, uint16_t pin)
     if (port == NULL) {
         return;
     }
-    /* Clock enable is board-specific; Cube MX_GPIO_Init normally enables ports. */
+    GpioClockEnable(port);
     HAL_GPIO_WritePin(port, pin, GPIO_PIN_RESET);
     gpio.Pin = pin;
     gpio.Mode = GPIO_MODE_OUTPUT_PP;
@@ -100,6 +122,7 @@ static void InitInputPullUp(GPIO_TypeDef *port, uint16_t pin)
     if (port == NULL) {
         return;
     }
+    GpioClockEnable(port);
     gpio.Pin = pin;
     gpio.Mode = GPIO_MODE_INPUT;
     gpio.Pull = GPIO_PULLUP;
