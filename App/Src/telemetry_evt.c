@@ -166,3 +166,30 @@ void Telemetry_EvtRadarLost(void)
 {
 	Telemetry_WriteLine("EVT RADAR lost");
 }
+
+void Telemetry_EvtCannon(uint8_t charge_after_shot)
+{
+	char buf[64];
+	if (charge_after_shot > 10U) {
+		charge_after_shot = 10U;
+	}
+	(void)snprintf(buf, sizeof(buf), "EVT CANNON charge=%u/10", (unsigned)charge_after_shot);
+	Telemetry_WriteLine(buf);
+}
+
+void Telemetry_EvtGiantHit(uint8_t hits, uint8_t hp)
+{
+	char buf[48];
+	(void)snprintf(buf, sizeof(buf), "EVT GIANT hit=%u/%u", (unsigned)hits, (unsigned)hp);
+	Telemetry_WriteLine(buf);
+}
+
+void Telemetry_EvtGiantDown(void)
+{
+	Telemetry_WriteLine("EVT GIANT down");
+}
+
+void Telemetry_EvtGiantMiss(void)
+{
+	Telemetry_WriteLine("EVT GIANT miss");
+}

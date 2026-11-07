@@ -332,6 +332,7 @@ Live screen per drone mode (adapter, `enhancements.c`):
 | Standby | Locked target → dial needle; else charge bar |
 | Battle entry | `BATTLE MODE` scroll once |
 | Battle | Locked target → line (blinks if armed); else charge bar, blinking when armed (charge ≥ 5) |
+| Giant cannon shot | `STATUS_SCREEN_CANNON` (above BATTLE text, below LAST): hit → 3-column beam on the giant's column flashing 40 ms for 600 ms; giant down → explosion frames for 1 s |
 | THE_LAST_OF_2028 | Banner scroll, then digits for the last 5 s |
 | Self-destruct | Explosion, then blank |
 

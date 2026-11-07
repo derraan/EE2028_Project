@@ -157,12 +157,13 @@ code { font: 12px var(--mono); color: var(--cyan); }
 /* Radar */
 .radar-wrap { width: 100%; aspect-ratio: 1; max-width: min(200px, 24vh); margin: 0 auto; }
 #radar { width: 100%; height: 100%; display: block; }
-.threat-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.threat-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
 .threat-stats div { text-align: center; padding: 7px 4px; border-radius: 8px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); }
 .threat-stats span { display: block; font: 9px var(--mono); letter-spacing: 0.14em; color: var(--dim); text-transform: uppercase; }
 .threat-stats strong { font-size: 22px; font-weight: 600; }
 #infected { color: var(--toxic); text-shadow: 0 0 12px rgba(141, 255, 106, 0.4); }
 #kills { color: var(--red-soft); }
+#giantKills { color: #ff8a4a; text-shadow: 0 0 12px rgba(255, 120, 60, 0.45); }
 .nearest { display: block; margin-top: 9px; font: 11px var(--mono); color: var(--muted); text-align: center; letter-spacing: 0.06em; }
 .nearest.lock { color: #ff6a7a; text-shadow: 0 0 8px rgba(255, 70, 90, 0.55); }
 

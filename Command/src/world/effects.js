@@ -257,9 +257,24 @@ export function createEffects(scene) {
     flash,
     ring,
 
+    /** Giant cannon: a thick red beam (≈5× the laser gun) that holds ~1 s. */
+    cannon(from, to) {
+      const b = beams.find((x) => x.life <= 0) || beams[0];
+      b.life = b.max = 1.0;
+      b.radius = 1.1;
+      b.g.visible = true;
+      setBeam(b, from, to, b.radius);
+      b.from = from.clone();
+      b.to = to.clone();
+      flash(from, { color: 0xff3030, size: 7, life: 0.5, light: 90 });
+      flash(to, { color: 0xff4040, size: 14, life: 0.8, light: 140 });
+      particles.burst(to, { count: 120, color: 0xff3a2a, speed: 14, life: 1.1, size: 0.9, gravity: -7, spread: 2 });
+    },
+
     laser(from, to) {
       const b = beams.find((x) => x.life <= 0) || beams[0];
-      b.life = 0.28;
+      b.life = b.max = 0.28;
+      b.radius = 0.22;
       b.g.visible = true;
       setBeam(b, from, to, 0.22);
       b.from = from.clone();
@@ -347,10 +362,10 @@ export function createEffects(scene) {
       for (const b of beams) {
         if (b.life <= 0) continue;
         b.life -= dt;
-        const k = Math.max(0, b.life / 0.28);
+        const k = Math.max(0, b.life / (b.max || 0.28));
         b.core.material.opacity = k;
         b.outer.material.opacity = 0.5 * k;
-        setBeam(b, b.from, b.to, 0.22 * (0.5 + k));
+        setBeam(b, b.from, b.to, (b.radius || 0.22) * (0.5 + k));
         if (b.life <= 0) b.g.visible = false;
       }
       for (const f of flashes) {

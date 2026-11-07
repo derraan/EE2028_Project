@@ -5,7 +5,8 @@
 
 /*
  * Screens in ResolveScreen() priority order (highest first):
- * EXPLOSION > LAST_2028 > BATTLE_TEXT > RADAR (locked target; blinks if armed)
+ * EXPLOSION > LAST_2028 > CANNON (beam / giant-down burst, transient)
+ * > BATTLE_TEXT > RADAR (locked target; blinks if armed)
  * > ARMED (charge bar blinks) > CHARGE (steady bar) > BLANK.
  */
 typedef enum {
@@ -15,7 +16,8 @@ typedef enum {
     STATUS_SCREEN_ARMED,
     STATUS_SCREEN_BATTLE_TEXT,
     STATUS_SCREEN_LAST_2028,
-    STATUS_SCREEN_EXPLOSION
+    STATUS_SCREEN_EXPLOSION,
+    STATUS_SCREEN_CANNON
 } StatusScreen_t;
 
 typedef enum {
@@ -46,6 +48,11 @@ typedef struct {
     uint32_t explosion_start_ms;
     uint8_t terminated;
 
+    /* Giant cannon shot: transient beam (hit) or burst (giant down). */
+    uint8_t cannon_active;
+    uint8_t cannon_down;
+    uint32_t cannon_start_ms;
+
     uint16_t scroll_col;
     uint32_t last_step_ms;
     StatusScreen_t last_drawn;
@@ -70,6 +77,9 @@ void StatusDisplay_SetRescueRemainingMs(StatusDisplay_HandleTypeDef *h,
                                         uint32_t remaining_ms);
 void StatusDisplay_Rescue(StatusDisplay_HandleTypeDef *h);
 void StatusDisplay_TriggerExplosion(StatusDisplay_HandleTypeDef *h);
+/** Giant cannon shot: thick flashing beam on the target column (down=0), or a
+ *  burst animation when the giant is destroyed (down=1). Ends by itself. */
+void StatusDisplay_Cannon(StatusDisplay_HandleTypeDef *h, uint8_t down);
 void StatusDisplay_Reset(StatusDisplay_HandleTypeDef *h);
 
 HAL_StatusTypeDef StatusDisplay_Update(StatusDisplay_HandleTypeDef *h, uint32_t now_ms);

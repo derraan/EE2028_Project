@@ -2,8 +2,13 @@
  * Virtual RD-03D + tracker + pan/laser — a browser stand-in for the firmware's
  * enhancement #5 chain:
  *   App/Src/radar_track.c   (nearest-threat tracker)
- *   App/Src/laser_aim.c     (pan slew + laser gate + fire strobe)
- *   App/Src/enhancements.c  (Radar_Update: mode gates + EVT RADAR cadence)
+ *   App/Src/laser_aim.c     (pan slew + laser gate)
+ *   App/Src/enhancements.c  (Radar_Update: mode gates + EVT RADAR cadence,
+ *                            Cannon_OnFired: giant HP + cannon beam window)
+ *
+ * Giant cannon: the locked target is a giant (2 hits). The physical laser is
+ * the cannon and lights only during a cannon beam window — gun shots (EVT FIRE)
+ * no longer strobe it.
  *
  * Like sim.js it never touches the dashboard: it prints the exact EVT RADAR
  * lines the firmware prints and the shared parser does the rest.
@@ -22,6 +27,12 @@ export const RADAR = Object.freeze({
   SWITCH_MARGIN_MM: 600,
   SMOOTH_ALPHA: 0.5,
   EVT_PERIOD_MS: 250,
+});
+
+/** Giant cannon — mirrors EE_GIANT_HP / EE_CANNON_BEAM_MS in enhancements.h. */
+export const GIANT = Object.freeze({
+  HP: 2,
+  BEAM_MS: 1000,
 });
 
 export const AIM = Object.freeze({
@@ -88,8 +99,8 @@ function createTracker() {
   return {
     t,
     reset() {
-      drop();
-      lockPending = lostPending = false;
+      drop(); // queues LOST if a target was locked (RadarTrack_Reset keeps it)
+      lockPending = false;
       t.contacts = 0;
     },
     onFrame(targets, now) {
@@ -227,6 +238,12 @@ export function createRadarMirror(emit) {
   let contacts = [];
   let nextFrame = 0;
   let evtAt = 0;
+  // Giant cannon (Cannon_OnFired / Radar_Update in enhancements.c)
+  let giantHits = 0;
+  let beamOn = false;
+  let beamUntil = 0;
+  let downPending = false;
+  let terminal = false;
 
   function reset(now = 0) {
     tracker = createTracker();
@@ -234,6 +251,11 @@ export function createRadarMirror(emit) {
     contacts = [];
     nextFrame = now;
     evtAt = now;
+    giantHits = 0;
+    beamOn = false;
+    beamUntil = 0;
+    downPending = false;
+    terminal = false;
   }
   reset();
 
@@ -251,13 +273,43 @@ export function createRadarMirror(emit) {
         .sort((p, q) => Math.hypot(p.x, p.y) - Math.hypot(q.x, q.y))
         .slice(0, RADAR.MAX_TARGETS);
     },
-    fire(now) {
-      aim.fire(now);
+    /** Enhancements_CannonReady(): a giant is locked and self-destruct has not started. */
+    cannonReady() {
+      return tracker.t.locked && !terminal;
+    },
+    /** Cannon_OnFired(): main.c already spent 10/10. Prints the same EVT GIANT lines. */
+    cannon(now) {
+      if (!tracker.t.locked) {
+        emit('Giant cannon missed - the target moved out of lock.');
+        emit('EVT GIANT miss');
+        return;
+      }
+      beamOn = true;
+      beamUntil = now + GIANT.BEAM_MS;
+      giantHits += 1;
+      if (giantHits >= GIANT.HP) {
+        giantHits = 0;
+        downPending = true;
+        emit('GIANT DOWN! The giant collapses.');
+        emit('EVT GIANT down');
+      } else {
+        emit(`Giant hit! (${giantHits}/${GIANT.HP}) - recharge to 10/10 to finish it.`);
+        emit(`EVT GIANT hit=${giantHits}/${GIANT.HP}`);
+      }
     },
     /** Mirror of Radar_Update(mode, now) in enhancements.c. */
-    tick(now, mode, terminal) {
+    tick(now, mode, isTerminal) {
+      terminal = Boolean(isTerminal);
       const allowTrack = (mode === 'STANDBY_MODE' || mode === 'BATTLE_MODE') && !terminal;
-      const allowLaser = mode === 'BATTLE_MODE' && allowTrack;
+      // Cannon beam window; after "giant down" drop the lock → next lock is a fresh giant.
+      if (beamOn && (now >= beamUntil || !allowTrack)) {
+        beamOn = false;
+        if (downPending) {
+          downPending = false;
+          tracker.reset();
+        }
+      }
+      const allowLaser = mode === 'BATTLE_MODE' && allowTrack && beamOn;
       while (now >= nextFrame) {
         if (allowTrack) tracker.onFrame(contacts, nextFrame);
         nextFrame += RADAR.FRAME_PERIOD_MS;
@@ -267,6 +319,7 @@ export function createRadarMirror(emit) {
       aim.update(tracker.t, allowTrack, allowLaser, now);
       let evt;
       while ((evt = tracker.poll())) {
+        giantHits = 0; // new or lost lock: a different giant
         if (evt === 'LOCK') {
           emitTrack();
           evtAt = now;
@@ -278,7 +331,7 @@ export function createRadarMirror(emit) {
       }
     },
     get snapshot() {
-      return { ...tracker.t, pan: aim.a.cmd, laser: aim.a.laser, aim: aim.a.state };
+      return { ...tracker.t, pan: aim.a.cmd, laser: aim.a.laser, aim: aim.a.state, giantHits, beamOn };
     },
   };
 }

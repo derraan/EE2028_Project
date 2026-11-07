@@ -30,9 +30,14 @@
 #endif
 /* One-shot drone actions the HUD / buzzer react to (no-op without enhancements). */
 #define EE_EVENT(evt) Enhancements_OnEvent((evt), HAL_GetTick())
+/* Giant cannon available: the radar has a giant locked. */
+#define EE_CANNON_READY() (Enhancements_CannonReady() != 0U)
 #else
 #define EE_EVENT(evt) ((void)0)
+#define EE_CANNON_READY() (0)
 #endif
+
+#define CANNON_CHARGE_COST       10 /* giant cannon needs 10/10 and spends all of it */
 
 /* CubeIDE console debug only (printf) — mission / VESPER traffic uses Telemetry_* over UART. */
 extern void initialise_monitor_handles(void); /* semihosting printf */
@@ -241,7 +246,20 @@ int main(void)
 				if (pb_hold_latched && pb_is_down &&
 					(BSP_PB_GetState(BUTTON_USER) == GPIO_PIN_RESET))
 				{
-					if (laser_charge < 5) {
+					/* Giant cannon: a radar-locked giant + full 10/10 → the hold fires
+					 * the cannon (all 10 charge) instead of the laser gun. */
+					if ((laser_charge >= CANNON_CHARGE_COST) && EE_CANNON_READY()) {
+						if ((HAL_GetTick() - pb_last_fire_tick) >= PB_FIRE_PERIOD_MS) {
+							pb_last_fire_tick = HAL_GetTick();
+							laser_charge -= CANNON_CHARGE_COST;
+							Telemetry_Printf("GIANT CANNON FIRED! KA-BOOM! (Remaining charge: %d/10)", laser_charge);
+							Telemetry_EvtCannon((uint8_t)laser_charge);
+							EE_EVENT(DRONE_EVENT_CANNON_FIRED);
+							Telemetry_Printf("Laser charge too low (%d/10) to fire! Please single-press to recharge the laser gun.", laser_charge);
+							pb_low_charge_warned = true;
+						}
+					}
+					else if (laser_charge < 5) {
 						if (!pb_low_charge_warned) {
 							Telemetry_Printf("Laser charge too low (%d/10) to fire! Please single-press to recharge the laser gun.", laser_charge);
 							pb_low_charge_warned = true;
@@ -475,6 +493,18 @@ void PB_OnSinglePress(void)
 			laser_charge = 10;
 		}
 		Telemetry_Printf("Laser recharging... Current charge: %d/10", laser_charge);
+		Telemetry_EvtCharge((uint8_t)laser_charge);
+		EE_EVENT(DRONE_EVENT_LASER_RECHARGED);
+	}
+	else if ((laser_charge < CANNON_CHARGE_COST) && EE_CANNON_READY()) {
+		/* Giant locked: keep charging past 5 so the cannon can reach 10/10
+		 * (baseline rule only recharges below 5; unchanged with no giant). */
+		laser_charge += 3;
+		if (laser_charge > 10) {
+			laser_charge = 10;
+		}
+		Telemetry_Printf("Cannon charging... Current charge: %d/10%s", laser_charge,
+			(laser_charge >= CANNON_CHARGE_COST) ? " - GIANT CANNON READY, hold to fire!" : "");
 		Telemetry_EvtCharge((uint8_t)laser_charge);
 		EE_EVENT(DRONE_EVENT_LASER_RECHARGED);
 	}

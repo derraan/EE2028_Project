@@ -54,6 +54,28 @@ int main(void)
     Telemetry_EvtCharge((uint8_t)charge);
     Telemetry_EvtRadarLost();
 
+    /* Giant cannon: overcharge to 10/10 on a locked giant, two hits (main.c + adapter order) */
+    Telemetry_EvtRadar(31, 2500U, 1U, 31, 0U, 1U);
+    charge = 10;
+    Telemetry_Printf("Cannon charging... Current charge: %d/10%s", charge, " - GIANT CANNON READY, hold to fire!");
+    Telemetry_EvtCharge((uint8_t)charge);
+    charge -= 10;
+    Telemetry_Printf("GIANT CANNON FIRED! KA-BOOM! (Remaining charge: %d/10)", charge);
+    Telemetry_EvtCannon((uint8_t)charge);
+    Telemetry_Printf("Giant hit! (%u/%u) - recharge to 10/10 to finish it.", 1U, 2U);
+    Telemetry_EvtGiantHit(1U, 2U);
+    Telemetry_EvtRadar(31, 2500U, 1U, 31, 1U, 1U); /* beam on */
+    charge = 10;
+    Telemetry_EvtCharge((uint8_t)charge);
+    charge -= 10;
+    Telemetry_Printf("GIANT CANNON FIRED! KA-BOOM! (Remaining charge: %d/10)", charge);
+    Telemetry_EvtCannon((uint8_t)charge);
+    Telemetry_Printf("GIANT DOWN! The giant collapses.");
+    Telemetry_EvtGiantDown();
+    Telemetry_EvtRadarLost();
+    charge = 3;
+    Telemetry_EvtCharge((uint8_t)charge);
+
     /* Flip → THE LAST OF EE2028, one failed rescue, then rescued */
     Telemetry_Printf("Drone is upside down! Entering THE LAST OF EE2028.");
     Telemetry_EvtMode(EVT_MODE_THE_LAST_OF_2028);

@@ -32,7 +32,10 @@ Every source goes through the **same** `src/parser.js`.
 | `EVT MODE=STANDBY_MODE` | Drone patrols the pad, cyan running lights, steady LED |
 | `EVT MODE=BATTLE_MODE` | Drone climbs, red searchlight, turret tracks the nearest infected, 1 Hz nav lights |
 | `Critical T/A/G threshold violated` | A spore meteor strikes the field and a wave rises |
-| `EVT FIRE charge=n/10` | Laser vaporises the priority target (one per FIRE) |
+| `EVT FIRE charge=n/10` | Laser gun vaporises the priority infected (one per FIRE). Giants shrug it off |
+| `EVT RADAR … lock=1` | A **giant** (10–20× a zombie) rises where the radar lock is; the camera swings to a side view |
+| `EVT CANNON` | Thick red giant-cannon beam from the drone to the giant's chest |
+| `EVT GIANT hit=1/2` / `down` | Giant staggers / topples and explodes; *Giants* counter increments |
 | `EVT MODE=THE_LAST_OF_2028` | Drone crashes inverted, alarm sky, infected swarm it; emergency strip with interpolated countdown |
 | `EVT ATTACK` | Sparks and impact on the downed drone |
 | `EVT RESCUE` | Drone rights itself; shockwave clears nearby infected |

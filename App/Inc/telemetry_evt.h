@@ -70,6 +70,18 @@ void Telemetry_EvtRadar(int16_t az_ddeg, uint16_t range_mm, uint8_t locked,
                         int16_t pan_ddeg, uint8_t laser_on, uint8_t contacts);
 void Telemetry_EvtRadarLost(void);                       /* EVT RADAR lost */
 
+/**
+ * Giant cannon (radar-locked giant, needs 10/10, uses all 10).
+ *   EVT CANNON charge=0/10      — main.c, the shot itself (charge AFTER)
+ *   EVT GIANT hit=1/2           — adapter, first hit on the locked giant
+ *   EVT GIANT down              — adapter, second hit: giant destroyed
+ *   EVT GIANT miss              — adapter, lock was lost before the shot landed
+ */
+void Telemetry_EvtCannon(uint8_t charge_after_shot);
+void Telemetry_EvtGiantHit(uint8_t hits, uint8_t hp);
+void Telemetry_EvtGiantDown(void);
+void Telemetry_EvtGiantMiss(void);
+
 #ifdef __cplusplus
 }
 #endif
