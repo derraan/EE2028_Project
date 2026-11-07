@@ -70,6 +70,7 @@ typedef struct {
 void RadarTrack_DefaultConfig(RadarTrack_Config_t *cfg);
 
 void RadarTrack_Init(RadarTrack_HandleTypeDef *h, const RadarTrack_Config_t *cfg);
+/** Drop any track. Queues RADAR_TRACK_EVT_LOST if a target was locked. */
 void RadarTrack_Reset(RadarTrack_HandleTypeDef *h);
 
 /** Feed one decoded frame (call for every frame, including empty ones). */

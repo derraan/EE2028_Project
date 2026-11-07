@@ -29,4 +29,5 @@ const src = [
 execFileSync(cc, ['-std=c99', '-Wall', '-Wextra', '-O1',
   `-I${path.join(root, 'scripts/host/stub')}`, `-I${path.join(root, 'App/Inc')}`, `-I${path.join(root, 'Core/Inc')}`,
   ...src, '-lm', '-o', out], { stdio: 'inherit' });
-execFileSync(out, { stdio: 'inherit' });
+// Firmware telemetry (stdout) goes to a log the test reads back; results go to stderr.
+execFileSync(out, [path.join(path.dirname(out), 'telemetry.log')], { stdio: 'inherit' });

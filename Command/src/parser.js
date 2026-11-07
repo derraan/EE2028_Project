@@ -80,6 +80,13 @@ export function createEmptyState() {
     radar: createEmptyRadar(),
     /** Increments on every new lock (lock 0→1) so views can react once. */
     radarLockSeq: 0,
+    /** Giant cannon (EVT CANNON / EVT GIANT). The radar-locked target is a giant. */
+    cannonSeq: 0,
+    giant: { hits: 0, hp: 2 },
+    giantHitSeq: 0,
+    giantDownSeq: 0,
+    giantMissSeq: 0,
+    giantKills: 0,
     events: [],
     rawLog: [],
     /** Total non-empty lines ingested (rawLog is capped; this is not). */
@@ -186,6 +193,7 @@ export function parseLine(state, line) {
         if (state.mode !== 'STANDBY_MODE' && state.mode !== 'BATTLE_MODE') {
           state.radar = createEmptyRadar();
           state.radarAz = null;
+          state.giant.hits = 0;
         }
         if (state.mode !== 'THE_LAST_OF_2028') {
           state.countdownMs = null;
@@ -207,6 +215,37 @@ export function parseLine(state, line) {
         state.fireSeq += 1;
         pushEvent(state, `FIRE → ${state.charge}/10`);
         return { kind: 'evt', name, charge: state.charge };
+      }
+      case 'CANNON': {
+        const n = parseChargeToken(kv.charge || bare || rest);
+        applyCharge(state, n);
+        state.cannonSeq += 1;
+        pushEvent(state, `GIANT CANNON → ${state.charge}/10`);
+        return { kind: 'evt', name, charge: state.charge };
+      }
+      case 'GIANT': {
+        if (/^down\b/i.test(rest)) {
+          state.giant.hits = 0;
+          state.giantDownSeq += 1;
+          state.giantKills += 1;
+          pushEvent(state, 'GIANT DOWN');
+          return { kind: 'evt', name, down: true };
+        }
+        if (/^miss\b/i.test(rest)) {
+          state.giantMissSeq += 1;
+          pushEvent(state, 'GIANT cannon missed');
+          return { kind: 'evt', name, miss: true };
+        }
+        const m = /^(\d+)\s*\/\s*(\d+)$/.exec(kv.hit || '');
+        if (m) {
+          state.giant.hits = Number(m[1]);
+          state.giant.hp = Number(m[2]) || 2;
+          state.giantHitSeq += 1;
+          pushEvent(state, `GIANT hit ${state.giant.hits}/${state.giant.hp}`);
+          return { kind: 'evt', name, hits: state.giant.hits, hp: state.giant.hp };
+        }
+        pushEvent(state, trimmed);
+        return { kind: 'evt_unknown', name, text: trimmed };
       }
       case 'COUNTDOWN': {
         let ms = null;
@@ -266,6 +305,7 @@ export function parseLine(state, line) {
         if (/^lost\b/i.test(rest)) {
           Object.assign(r, createEmptyRadar(), { at: Date.now() });
           state.radarAz = null;
+          state.giant.hits = 0; // firmware: lost lock = a different giant next time
           pushEvent(state, 'RADAR lost');
           return { kind: 'evt', name, lost: true };
         }

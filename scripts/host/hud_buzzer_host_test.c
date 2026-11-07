@@ -14,13 +14,15 @@
 
 #include "enhancements.h"
 
+/* Test output goes to stderr: stdout carries the firmware's telemetry lines
+ * (telemetry_evt.c's host fallback prints them), redirected to a log file. */
 static int s_fail;
 #define CHECK(cond, ...)                                                   \
     do {                                                                   \
         if (!(cond)) {                                                     \
-            printf("FAIL %s:%d: ", __FILE__, __LINE__);                    \
-            printf(__VA_ARGS__);                                           \
-            printf("\n");                                                  \
+            fprintf(stderr, "FAIL %s:%d: ", __FILE__, __LINE__);           \
+            fprintf(stderr, __VA_ARGS__);                                  \
+            fprintf(stderr, "\n");                                         \
             s_fail++;                                                      \
         }                                                                  \
     } while (0)
@@ -142,11 +144,14 @@ uint32_t g_now = 1000U;
 static DroneStatus_t s_st;
 static uint32_t s_last_entry;
 
+static void FeedRadar(void);
+
 static void Tick(uint32_t ms, uint32_t step)
 {
     uint32_t end = g_now + ms;
     while (g_now < end) {
         g_now += step;
+        FeedRadar();
         if (s_st.mode == THE_LAST_OF_2028) {
             uint32_t el = g_now - s_last_entry;
             s_st.rescue_remaining_ms = (el >= RESCUE_TIMEOUT_MS) ? 0U : (RESCUE_TIMEOUT_MS - el);
@@ -158,10 +163,82 @@ static void Tick(uint32_t ms, uint32_t step)
     }
 }
 
+/* ------------------------------------------------------------ fake RD-03D + laser */
+
+static uint8_t s_rx[4096];
+static uint16_t s_rx_head, s_rx_tail;
+static int s_giant_present;     /* a person stands in front of the radar */
+static uint32_t s_next_frame_ms;
+static uint8_t s_laser_on;
+
+static uint16_t FakeRadarRead(void *ctx, uint8_t *buf, uint16_t max)
+{
+    uint16_t n = 0U;
+    (void)ctx;
+    while ((n < max) && (s_rx_tail != s_rx_head)) {
+        buf[n++] = s_rx[s_rx_tail];
+        s_rx_tail = (uint16_t)((s_rx_tail + 1U) % sizeof(s_rx));
+    }
+    return n;
+}
+
+static void FakeRadarWrite(void *ctx, const uint8_t *buf, uint16_t len)
+{
+    (void)ctx;
+    (void)buf;
+    (void)len;
+}
+
+static void FakeLaser(void *ctx, uint8_t on)
+{
+    (void)ctx;
+    s_laser_on = (on != 0U) ? 1U : 0U;
+}
+
+/* RD-03D target encoding: sign bit set = positive. */
+static void EncSigned(int v, uint8_t *lo, uint8_t *hi)
+{
+    unsigned mag = (unsigned)((v < 0) ? -v : v) & 0x7FFFU;
+    if (v > 0) {
+        mag |= 0x8000U;
+    }
+    *lo = (uint8_t)(mag & 0xFFU);
+    *hi = (uint8_t)(mag >> 8);
+}
+
+/* One 30-byte frame with a single target at (x, y) mm, ~10 Hz like the module. */
+static void PushRadarFrame(int x_mm, int y_mm)
+{
+    uint8_t f[RD03D_FRAME_LEN];
+    uint16_t i;
+    memset(f, 0, sizeof(f));
+    f[0] = 0xAA; f[1] = 0xFF; f[2] = 0x03; f[3] = 0x00;
+    EncSigned(x_mm, &f[4], &f[5]);
+    EncSigned(y_mm, &f[6], &f[7]);
+    f[10] = 0x68; f[11] = 0x01;
+    f[28] = 0x55; f[29] = 0xCC;
+    for (i = 0U; i < RD03D_FRAME_LEN; i++) {
+        s_rx[s_rx_head] = f[i];
+        s_rx_head = (uint16_t)((s_rx_head + 1U) % sizeof(s_rx));
+    }
+}
+
+static void FeedRadar(void)
+{
+    while ((int32_t)(g_now - s_next_frame_ms) >= 0) {
+        if (s_giant_present) {
+            PushRadarFrame(0, 2000); /* 2 m straight ahead */
+        }
+        s_next_frame_ms += 100U;
+    }
+}
+
 static void Boot(void)
 {
     static HT16K33_HandleTypeDef dev;
     static Buzzer_Backend_t buzz;
+    static RD03D_Transport_t radar;
+    static Laser_Backend_t laser;
     Enhancements_Config_t cfg;
 
     memset(&cfg, 0, sizeof(cfg));
@@ -169,14 +246,25 @@ static void Boot(void)
     s_edges = 0;
     s_buzz_on = 0U;
     g_now = 1000U;
+    s_rx_head = s_rx_tail = 0U;
+    s_giant_present = 0;
+    s_next_frame_ms = g_now;
+    s_laser_on = 0U;
 
     if (HT16K33_Init(&dev, &s_i2c, HT16K33_I2C_ADDR_DEFAULT) != HAL_OK) {
         CHECK(0, "HT16K33_Init failed on stub bus");
     }
     buzz.set_tone = FakeTone;
     buzz.ctx = NULL;
+    radar.read = FakeRadarRead;
+    radar.write = FakeRadarWrite;
+    radar.ctx = NULL;
+    laser.set_output = FakeLaser;
+    laser.ctx = NULL;
     cfg.matrix = &dev;
     cfg.buzzer = &buzz;
+    cfg.radar = &radar;
+    cfg.laser = &laser;
     Enhancements_Init(&cfg);
 
     memset(&s_st, 0, sizeof(s_st));
@@ -395,8 +483,126 @@ static void Test_RadarPriority(void)
     CHECK(FrameIs(0xFFU), "no target: back to the charge bar");
 }
 
-int main(void)
+/* ------------------------------------------------------------ telemetry log */
+
+static const char *s_log_path;
+static long s_log_mark;
+
+/* Remember where the log is now; LogCount() then looks only at newer lines. */
+static void LogMark(void)
 {
+    fflush(stdout);
+    s_log_mark = ftell(stdout);
+}
+
+static int LogCount(const char *needle)
+{
+    char line[256];
+    int n = 0;
+    FILE *f;
+    fflush(stdout);
+    f = fopen(s_log_path, "rb");
+    if (f == NULL) {
+        return -1;
+    }
+    (void)fseek(f, s_log_mark, SEEK_SET);
+    while (fgets(line, sizeof(line), f) != NULL) {
+        if (strstr(line, needle) != NULL) {
+            n++;
+        }
+    }
+    fclose(f);
+    return n;
+}
+
+/* Giant cannon: radar lock = giant, physical laser = cannon beam, 2 hits. */
+static void Test_GiantCannon(void)
+{
+    uint32_t t0;
+    int saw_burst = 0;
+    int i;
+
+    Boot();
+    s_st.mode = BATTLE_MODE;
+    s_st.charge = 10U;
+    Tick(1000U, 10U);
+    CHECK(Enhancements_CannonReady() == 0U, "no giant in front of the radar: cannon not ready");
+
+    LogMark();
+    s_giant_present = 1;
+    Tick(1200U, 10U);
+    CHECK(Enhancements_CannonReady() == 1U, "giant locked: cannon ready");
+    CHECK(LogCount("EVT RADAR az=") >= 1 && LogCount("lock=1") >= 1, "lock reported on telemetry");
+    CHECK(s_laser_on == 0U, "laser stays OFF while locked (no aim dot; laser = cannon only)");
+
+    /* Gun shots never light the physical laser any more. */
+    Enhancements_OnEvent(DRONE_EVENT_LASER_FIRED, g_now);
+    Tick(200U, 10U);
+    CHECK(s_laser_on == 0U, "laser gun shot does not light the cannon laser");
+    Tick(600U, 10U);
+
+    /* Shot 1: beam on the giant for ~1 s, giant wounded 1/2. */
+    LogMark();
+    t0 = g_now;
+    Enhancements_OnEvent(DRONE_EVENT_CANNON_FIRED, g_now);
+    Tick(50U, 10U);
+    CHECK(s_laser_on == 1U, "cannon beam lights the laser on the locked giant");
+    Tick(800U, 10U);
+    CHECK(s_laser_on == 1U, "beam still on at 0.85 s");
+    Tick(300U, 10U);
+    CHECK(s_laser_on == 0U, "beam off after EE_CANNON_BEAM_MS");
+    CHECK(LogCount("EVT GIANT hit=1/2") == 1, "first hit reported");
+    CHECK(LogCount("EVT GIANT down") == 0, "giant survives the first hit");
+    CHECK(OnTime(t0, t0 + 900U) >= 600U, "cannon cue ends in a long blast, on %u ms",
+          (unsigned)OnTime(t0, t0 + 900U));
+    CHECK(Enhancements_CannonReady() == 1U, "same giant still locked after a hit");
+    Tick(1000U, 10U);
+
+    /* Shot 2: giant down; burst on the matrix; lock dropped → new giant. */
+    LogMark();
+    Enhancements_OnEvent(DRONE_EVENT_CANNON_FIRED, g_now);
+    for (i = 0; i < 40; i++) {
+        Tick(10U, 10U);
+        if ((s_frame[0] == 0x18U) || (s_frame[0] == 0x81U)) {
+            saw_burst = 1; /* explosion frames */
+        }
+    }
+    CHECK(saw_burst, "giant down shows the burst on the matrix");
+    CHECK(LogCount("EVT GIANT down") == 1, "second hit destroys the giant");
+    Tick(800U, 10U);
+    CHECK(LogCount("EVT RADAR lost") >= 1, "lock dropped after the giant falls");
+    Tick(1000U, 10U);
+    CHECK(Enhancements_CannonReady() == 1U, "person still there: re-locked as a NEW giant");
+
+    LogMark();
+    Enhancements_OnEvent(DRONE_EVENT_CANNON_FIRED, g_now);
+    Tick(100U, 10U);
+    CHECK(LogCount("EVT GIANT hit=1/2") == 1, "new giant starts at full HP");
+    Tick(1200U, 10U);
+
+    /* Giant walks off: lock lost resets HP; a shot without lock is a miss. */
+    s_giant_present = 0;
+    Tick(1500U, 10U);
+    CHECK(Enhancements_CannonReady() == 0U, "lock lost when the giant leaves");
+    LogMark();
+    Enhancements_OnEvent(DRONE_EVENT_CANNON_FIRED, g_now);
+    Tick(100U, 10U);
+    CHECK(LogCount("EVT GIANT miss") == 1, "shot without a lock is a miss");
+    CHECK(s_laser_on == 0U, "no beam without a lock");
+}
+
+int main(int argc, char **argv)
+{
+    if (argc < 2) {
+        fprintf(stderr, "usage: hud_buzzer_test <telemetry.log>\n");
+        return 2;
+    }
+    s_log_path = argv[1];
+    if (freopen(s_log_path, "w+", stdout) == NULL) {
+        fprintf(stderr, "cannot open %s\n", s_log_path);
+        return 2;
+    }
+
     Test_StandbyShowsChargeNotDead();
     Test_BattleEntryCueAndHud();
     Test_RechargeAndDenied();
@@ -406,11 +612,12 @@ int main(void)
     Test_RescueFailThenRescued();
     Test_SelfDestructEffects();
     Test_RadarPriority();
+    Test_GiantCannon();
 
     if (s_fail != 0) {
-        printf("%d check(s) failed\n", s_fail);
+        fprintf(stderr, "%d check(s) failed\n", s_fail);
         return 1;
     }
-    printf("OK - matrix HUD + buzzer integration passed\n");
+    fprintf(stderr, "OK - matrix HUD + buzzer + giant cannon integration passed\n");
     return 0;
 }

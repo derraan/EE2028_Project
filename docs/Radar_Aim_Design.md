@@ -1,6 +1,8 @@
 # Radar zombie detection + laser aim (enhancement #5)
 
-An Ai-Thinker **RD-03D** 24 GHz mmWave radar detects people ("zombies" in the VESPER story) and localises them in **azimuth**. A single **pan servo** turns a low-power **laser pointer** onto the nearest one's body. In Battle the pointer lights once it is on target, and each accepted shot (`EVT FIRE`) strobes it.
+An Ai-Thinker **RD-03D** 24 GHz mmWave radar detects people ("zombies" in the VESPER story) and localises them in **azimuth**. A single **pan servo** turns a low-power **laser pointer** onto the nearest one's body.
+
+**Giant cannon (current behaviour):** the locked person is a *giant* and the laser is the *giant cannon*. The servo tracks the lock in Standby and Battle, but the laser stays **off** until a cannon shot (Battle + lock + 10/10 hold-to-fire). It then lights steadily for `EE_CANNON_BEAM_MS` (1 s) while aimed. Gun shots (`EVT FIRE`) no longer strobe it. The adapter implements this by opening `allow_laser` only during the beam window; `laser_aim.c` is unchanged. Giant HP, `EVT GIANT` and the recharge rule: `docs/Assignment2_Enhancements.md` §5a.
 
 The radar is **detection + aiming only**. It never changes the drone mode, adds or spends charge, or fires. Hold-to-fire, the +3 charge rule, rescue, and the 10 s / 5-rescue self-destruct all stay in `Core/Src/main.c`. This is the same authority rule IR follows.
 

@@ -83,6 +83,21 @@ export function createAudio() {
       o.start(t);
       o.stop(t + 0.35);
     },
+    /** Giant cannon: rising charge whine into a heavy blast. */
+    cannon() {
+      if (!ctx) return;
+      const t = ctx.currentTime;
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(90, t);
+      o.frequency.exponentialRampToValueAtTime(1400, t + 0.22);
+      const g = ctx.createGain();
+      env(g, t, 0.01, 0.25, 0.24);
+      o.connect(g).connect(master);
+      o.start(t);
+      o.stop(t + 0.26);
+      setTimeout(() => this.boom(1.4), 200);
+    },
     boom(size = 1) {
       if (!ctx) return;
       const t = ctx.currentTime;

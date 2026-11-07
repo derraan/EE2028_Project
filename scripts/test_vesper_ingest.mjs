@@ -60,7 +60,10 @@ for (const seed of [1, 7, 42, 1234]) {
     `${tag} sensor vectors parsed`);
   assert(s.fireSeq === 2, `${tag} two shots, fireSeq=${s.fireSeq}`);
   assert(s.charge === 3, `${tag} charge after recharge = 3, got ${s.charge}`);
-  assert(s.radarLockSeq === 1, `${tag} one radar lock, got ${s.radarLockSeq}`);
+  assert(s.radarLockSeq === 2, `${tag} two radar locks (zombie era + giant), got ${s.radarLockSeq}`);
+  assert(s.cannonSeq === 2 && s.fireSeq === 2, `${tag} cannon shots separate from gun shots, cannon=${s.cannonSeq} fire=${s.fireSeq}`);
+  assert(s.giantHitSeq === 1 && s.giantDownSeq === 1 && s.giantKills === 1, `${tag} giant hit then down`);
+  assert(s.giant.hits === 0, `${tag} giant HP reset after down/lost`);
   assert(s.radar.lock === false, `${tag} radar lost clears lock`);
   assert(s.rescueSeq === 1, `${tag} one rescue, got ${s.rescueSeq}`);
   assert(s.attackSeq >= 2, `${tag} attacks counted, got ${s.attackSeq}`);

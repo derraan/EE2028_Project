@@ -191,7 +191,8 @@ assert(formatRadarLine({ az: 0.05, range: 500, lock: 1, pan: -7.25, laser: 1, n:
   assert(r.s.mode === 'STANDBY_MODE' && r.s.fireSeq === 0, 'radar has no mode / fire authority');
 }
 
-// Battle: laser lights once aligned; FIRE strobes; lost → laser off + EVT lost
+// Battle: a locked giant is tracked but the laser (= giant cannon) stays dark;
+// gun shots never light it; lost → EVT RADAR lost
 {
   const r = rig();
   r.double();
@@ -201,15 +202,56 @@ assert(formatRadarLine({ az: 0.05, range: 500, lock: 1, pan: -7.25, laser: 1, n:
   r.advance(400);
   assert(r.s.radar.lock, 'battle lock');
   r.advance(500);
-  assert(r.s.radar.laser && Math.abs(r.s.radar.pan - r.s.radar.az) < AIM.ALIGNED_TOL_DEG, `laser on target, ${JSON.stringify(r.s.radar)}`);
+  assert(Math.abs(r.s.radar.pan - r.s.radar.az) < AIM.ALIGNED_TOL_DEG, `servo on target, ${JSON.stringify(r.s.radar)}`);
+  assert(!r.s.radar.laser, 'no aim dot: laser only lights for a cannon beam');
   r.hold(SIM.HOLD_MS + 100);
-  assert(r.s.fireSeq === 1, 'hold-to-fire unchanged by radar');
-  r.advance(AIM.FIRE_STROBE_MS);
-  assert(r.board.snapshot.radar.laser, 'laser steady again after strobe');
+  assert(r.s.fireSeq === 1 && r.s.cannonSeq === 0, 'below 10/10 the hold is the laser gun');
+  assert(!r.board.snapshot.radar.laser, 'gun shot does not light the cannon laser');
   r.board.setRadarContacts([]);
   r.advance(RADAR.LOST_TIMEOUT_MS + 100);
   assert(!r.s.radar.lock && !r.s.radar.laser && r.lines.includes('EVT RADAR lost'), 'lost clears lock + laser');
   assert(r.s.radarLockSeq === 1, 'one lock so far');
+}
+
+// Giant cannon: overcharge to 10/10 while locked, 2 hits destroy the giant,
+// the lock drops and the same person re-locks as a fresh giant
+{
+  const { GIANT } = await load('Command/src/radar_mirror.js');
+  const r = rig();
+  r.double();
+  r.board.setRadarContacts([{ x: 0, y: 2500 }]);
+  r.advance(500);
+  assert(r.s.radar.lock, 'giant locked');
+  for (let i = 0; i < 4; i++) r.single(); // 0→3→6 (baseline) →9→10 (overcharge, giant locked)
+  assert(r.s.charge === 10, `overcharge to 10/10 with a giant locked, got ${r.s.charge}`);
+  assert(r.lines.some((l) => /GIANT CANNON READY/.test(l)), 'cannon-ready prompt printed');
+
+  r.hold(SIM.HOLD_MS + 100);
+  assert(r.s.cannonSeq === 1 && r.s.fireSeq === 0, `hold at 10/10 + lock fires the cannon, not the gun (cannon=${r.s.cannonSeq} fire=${r.s.fireSeq})`);
+  assert(r.s.charge === 0, `cannon spends all 10, got ${r.s.charge}`);
+  assert(r.lines.includes('EVT CANNON charge=0/10') && r.lines.includes('EVT GIANT hit=1/2'), 'cannon + first hit reported');
+  assert(r.s.giant.hits === 1 && r.s.giantKills === 0, 'giant survives the first hit');
+  r.advance(RADAR.EVT_PERIOD_MS + 20);
+  assert(r.s.radar.laser, 'cannon beam lights the laser on the giant');
+  r.advance(GIANT.BEAM_MS);
+  assert(!r.board.snapshot.radar.laser, 'beam ends after GIANT.BEAM_MS');
+
+  for (let i = 0; i < 4; i++) r.single(); // 0→3→6→9→10
+  assert(r.s.charge === 10, `recharged to 10/10, got ${r.s.charge}`);
+  r.hold(SIM.HOLD_MS + 100);
+  assert(r.lines.includes('EVT GIANT down') && r.s.giantKills === 1 && r.s.giant.hits === 0, 'second hit destroys the giant');
+  const locks = r.s.radarLockSeq;
+  r.advance(GIANT.BEAM_MS + 600);
+  assert(r.lines.filter((l) => l === 'EVT RADAR lost').length >= 1, 'lock dropped after the giant falls');
+  assert(r.s.radarLockSeq === locks + 1, `same person re-locks as a new giant, locks ${locks} → ${r.s.radarLockSeq}`);
+
+  // No giant: the baseline recharge rule is untouched.
+  r.board.setRadarContacts([]);
+  r.advance(RADAR.LOST_TIMEOUT_MS + 100);
+  r.single();
+  r.single(); // 0→3→6
+  r.single();
+  assert(r.s.charge === 6 && r.lines.at(-1).includes('already sufficient'), `no giant: still stops at ≥5, got ${r.s.charge}`);
 }
 
 // Out of FOV / too close / too far are ignored; a nearer zombie steals the lock

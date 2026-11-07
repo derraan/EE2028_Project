@@ -52,7 +52,11 @@ Threshold violation lines from PR #3 (e.g. `T:40.10 C, exceeds threshold…`) re
 | `EVT RESCUE` | Optional | Pairs with successful rescue prose |
 | `EVT THRESHOLD_OK` | Optional | Clear sticky threshold warning |
 | `EVT RADAR az=… range_mm=… lock=1 pan=… laser=0\|1 n=…` | RD-03D lock, then every 250 ms while locked | Enhancement #5. `az`/`pan` in degrees (one decimal, + = right of boresight). See `docs/Radar_Aim_Design.md` |
-| `EVT RADAR lost` | Locked track dropped (timeout, or leaving Standby/Battle) | Clears the lock in VESPER |
+| `EVT RADAR lost` | Locked track dropped (timeout, leaving Standby/Battle, or after a giant is destroyed) | Clears the lock in VESPER |
+| `EVT CANNON charge=0/10` | Giant cannon fired: Battle + radar lock + 10/10, hold-to-fire (`main.c`) | Charge **after** the shot; separate from `EVT FIRE` (gun) |
+| `EVT GIANT hit=1/2` | First cannon hit on the locked giant (adapter) | Giant HP = 2 |
+| `EVT GIANT down` | Second hit: giant destroyed. Lock is dropped when the beam ends, so the same person re-locks as a new giant | |
+| `EVT GIANT miss` | Cannon fired but the lock was lost first | |
 
 Example stream (plan shape):
 
@@ -86,7 +90,7 @@ Wired from `main.c` today: mission prose via `Telemetry_Printf`, sensors via `Te
 
 Implemented helper but **not** called from live `main.c` yet: `Telemetry_EvtThresholdOk` (parser clears sticky thresholds on the next good sensor line).
 
-Wired from the enhancements adapter when built with `EE_ENHANCEMENTS=1 EE_RADAR_AIM=1`: `EVT RADAR …` / `EVT RADAR lost` (`Radar_Update` in `enhancements.c`).
+Wired from the enhancements adapter when built with `EE_ENHANCEMENTS=1 EE_RADAR_AIM=1`: `EVT RADAR …` / `EVT RADAR lost` (`Radar_Update` in `enhancements.c`), `EVT GIANT …` (`Cannon_OnFired`). `EVT CANNON` comes from `main.c`, which owns the charge.
 
 Harness / optional only (not live adapter): `EVT IR=…`, `EVT CAP_EXPLODE=…`, `EVT THREAT=…`. Live IR is prose + chirp; live relay is GPIO via `Enhancements_OnEvent(DRONE_EVENT_SELF_DESTRUCT_STARTED, …)`.
 

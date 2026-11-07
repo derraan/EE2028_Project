@@ -12,6 +12,10 @@
  *  - Standby: telemetry every 1 s; T/A/G trip → Battle; single press ignored.
  *  - Battle: single press +3 charge (cap 10) only while charge < 5;
  *    hold fires every 500 ms, −5 per shot, needs ≥5/10.
+ *  - Giant cannon (enhanced build): while the radar has a giant locked and
+ *    charge is 10/10, the hold fires the cannon instead (−10, EVT CANNON);
+ *    the radar mirror counts giant hits (EVT GIANT hit=1/2 → down). With a
+ *    giant locked, single press keeps charging +3 past 5 up to 10/10.
  *  - Upside-down (accel z < −4) in Standby/Battle → THE_LAST_OF_2028.
  *  - THE_LAST_OF_2028: ATTACK + COUNTDOWN every 1 s; upright double-press
  *    rescues to Battle; 5 failed upside-down rescues or 10 s → self-destruct.
@@ -32,6 +36,7 @@ export const SIM = Object.freeze({
   RESCUE_TIMEOUT_MS: 10000,
   RESCUE_ATTEMPT_LIMIT: 5,
   TERMINATE_DELAY_MS: 1000,
+  CANNON_COST: 10, // CANNON_CHARGE_COST in main.c
 });
 
 const STANDBY = 'STANDBY_MODE';
@@ -152,6 +157,11 @@ export function createVirtualBoard(emit) {
       s.charge = Math.min(10, s.charge + 3);
       emit(`Laser recharging... Current charge: ${s.charge}/10`);
       emit(`EVT CHARGE=${s.charge}/10`);
+    } else if (s.charge < SIM.CANNON_COST && radar.cannonReady()) {
+      // Giant locked: keep charging past 5 so the cannon can reach 10/10.
+      s.charge = Math.min(10, s.charge + 3);
+      emit(`Cannon charging... Current charge: ${s.charge}/10${s.charge >= SIM.CANNON_COST ? ' - GIANT CANNON READY, hold to fire!' : ''}`);
+      emit(`EVT CHARGE=${s.charge}/10`);
     } else {
       emit(
         'Laser charge is already sufficient (>=5/10). Hold button >500ms to fire! Or double-press within 500ms to return to standby mode'
@@ -209,7 +219,18 @@ export function createVirtualBoard(emit) {
           break;
         }
         if (s.holdLatched && s.down) {
-          if (s.charge < 5) {
+          if (s.charge >= SIM.CANNON_COST && radar.cannonReady()) {
+            // Giant cannon: a radar-locked giant + full 10/10 → the hold fires the cannon.
+            if (now - s.lastFireAt >= SIM.FIRE_PERIOD_MS) {
+              s.lastFireAt = now;
+              s.charge -= SIM.CANNON_COST;
+              emit(`GIANT CANNON FIRED! KA-BOOM! (Remaining charge: ${s.charge}/10)`);
+              emit(`EVT CANNON charge=${s.charge}/10`);
+              radar.cannon(now); // Enhancements_OnEvent(DRONE_EVENT_CANNON_FIRED)
+              emit(`Laser charge too low (${s.charge}/10) to fire! Please single-press to recharge the laser gun.`);
+              s.lowChargeWarned = true;
+            }
+          } else if (s.charge < 5) {
             if (!s.lowChargeWarned) {
               emit(`Laser charge too low (${s.charge}/10) to fire! Please single-press to recharge the laser gun.`);
               s.lowChargeWarned = true;
@@ -219,7 +240,6 @@ export function createVirtualBoard(emit) {
             s.charge -= 5;
             emit(`Laser gun fired continuously! PEW PEW! (Remaining charge: ${s.charge}/10)`);
             emit(`EVT FIRE charge=${s.charge}/10`);
-            radar.fire(now); // Enhancements_OnEvent(DRONE_EVENT_LASER_FIRED)
             if (s.charge < 5) {
               emit(`Laser charge too low (${s.charge}/10) to fire! Please single-press to recharge the laser gun.`);
               s.lowChargeWarned = true;

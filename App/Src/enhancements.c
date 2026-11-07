@@ -48,6 +48,12 @@ typedef struct {
     uint32_t radar_t0_ms;      /* first Radar_Update tick (0 = not yet) */
     uint8_t radar_cmd_resends; /* multi-target command resent at +1 s, +3 s */
 
+    /* Giant cannon: the locked radar target is a giant with EE_GIANT_HP. */
+    uint8_t giant_hits;        /* cannon hits on the current lock */
+    uint8_t beam_on;           /* physical laser (cannon beam) window open */
+    uint32_t beam_until_ms;
+    uint8_t giant_down_pending; /* drop the lock once the beam ends → next giant */
+
     DroneState_t last_mode;
     uint8_t last_charge;
     uint8_t last_armed;
@@ -180,7 +186,9 @@ static void Radar_EmitTrack(void)
 
 /**
  * Radar → tracker → pan/laser. Detection and aiming only: no mode change and
- * no fire authority (hold-to-fire + charge stay in main.c).
+ * no fire authority (hold-to-fire, the cannon rule and charge stay in main.c).
+ * The locked target is a giant; the physical laser is the giant cannon and
+ * lights only during a cannon beam window (Battle + locked + aimed).
  */
 static void Radar_Update(DroneState_t mode, uint32_t now_ms)
 {
@@ -193,7 +201,21 @@ static void Radar_Update(DroneState_t mode, uint32_t now_ms)
                              (s_ee.terminal_started == 0U))
                                 ? 1U
                                 : 0U);
-    allow_laser = (uint8_t)(((mode == BATTLE_MODE) && (allow_track != 0U)) ? 1U : 0U);
+
+    /* Cannon beam window: close it on time; after a "giant down" shot drop
+     * the lock so the next detection is a fresh giant with full HP. */
+    if ((s_ee.beam_on != 0U) &&
+        (((int32_t)(now_ms - s_ee.beam_until_ms) >= 0) || (allow_track == 0U))) {
+        s_ee.beam_on = 0U;
+        if (s_ee.giant_down_pending != 0U) {
+            s_ee.giant_down_pending = 0U;
+            RadarTrack_Reset(&s_ee.track); /* queues LOST → EVT RADAR lost */
+        }
+    }
+    allow_laser = (uint8_t)(((mode == BATTLE_MODE) && (allow_track != 0U) &&
+                             (s_ee.beam_on != 0U))
+                                ? 1U
+                                : 0U);
 
     if (s_ee.have_radar != 0U) {
         uint8_t rx[EE_RADAR_RX_CHUNK];
@@ -241,6 +263,7 @@ static void Radar_Update(DroneState_t mode, uint32_t now_ms)
     LaserAim_Update(&s_ee.aim, &s_ee.track.tgt, allow_track, allow_laser, now_ms);
 
     while ((evt = RadarTrack_PollEvent(&s_ee.track)) != RADAR_TRACK_EVT_NONE) {
+        s_ee.giant_hits = 0U; /* new lock or lost lock: a different giant */
         if (evt == RADAR_TRACK_EVT_LOCK) {
             Radar_EmitTrack();
             s_ee.radar_evt_ms = now_ms;
@@ -269,6 +292,52 @@ const RadarTarget_t *Enhancements_RadarTarget(void)
     return &s_ee.track.tgt;
 }
 
+uint8_t Enhancements_CannonReady(void)
+{
+    return (uint8_t)(((s_ee.inited != 0U) && (s_ee.terminal_started == 0U) &&
+                      (s_ee.track.tgt.locked != 0U))
+                         ? 1U
+                         : 0U);
+}
+
+/* One cannon shot (main.c already spent the 10/10): open the laser beam on
+ * the locked giant and count the hit. */
+static void Cannon_OnFired(uint32_t now_ms)
+{
+    uint8_t down = 0U;
+
+    if (s_ee.track.tgt.locked == 0U) {
+        Telemetry_Printf("Giant cannon missed - the target moved out of lock.");
+        Telemetry_EvtGiantMiss();
+        if (s_ee.have_buzzer != 0U) {
+            Buzzer_Play(&s_ee.buzzer, BUZZER_PATTERN_CANNON);
+        }
+        return;
+    }
+
+    s_ee.beam_on = 1U;
+    s_ee.beam_until_ms = now_ms + EE_CANNON_BEAM_MS;
+    s_ee.giant_hits++;
+    if (s_ee.giant_hits >= EE_GIANT_HP) {
+        down = 1U;
+        s_ee.giant_hits = 0U;
+        s_ee.giant_down_pending = 1U;
+        Telemetry_Printf("GIANT DOWN! The giant collapses.");
+        Telemetry_EvtGiantDown();
+    } else {
+        Telemetry_Printf("Giant hit! (%u/%u) - recharge to 10/10 to finish it.",
+                         (unsigned)s_ee.giant_hits, (unsigned)EE_GIANT_HP);
+        Telemetry_EvtGiantHit(s_ee.giant_hits, (uint8_t)EE_GIANT_HP);
+    }
+    if (s_ee.have_buzzer != 0U) {
+        Buzzer_Play(&s_ee.buzzer, (down != 0U) ? BUZZER_PATTERN_GIANT_DOWN
+                                               : BUZZER_PATTERN_CANNON);
+    }
+    if (s_ee.matrix_ok != 0U) {
+        StatusDisplay_Cannon(&s_ee.status, down);
+    }
+}
+
 void Enhancements_RadarFrameStats(uint32_t *frames_ok, uint32_t *frames_bad)
 {
     if (frames_ok != NULL) {
@@ -292,11 +361,15 @@ void Enhancements_OnEvent(DroneEvent_t event, uint32_t now_ms)
 
     switch (event) {
         case DRONE_EVENT_LASER_FIRED:
+            /* Laser gun: small zombies only. The physical laser is the giant
+             * cannon now, so a gun shot no longer lights it. */
             if (s_ee.have_buzzer != 0U) {
                 Buzzer_Play(&s_ee.buzzer, BUZZER_PATTERN_LASER_FIRE);
             }
-            /* Strobe the pointer on the locked zombie (gated by aim + mode). */
-            LaserAim_Fire(&s_ee.aim, now_ms);
+            break;
+
+        case DRONE_EVENT_CANNON_FIRED:
+            Cannon_OnFired(now_ms);
             break;
 
         case DRONE_EVENT_SELF_DESTRUCT_STARTED:

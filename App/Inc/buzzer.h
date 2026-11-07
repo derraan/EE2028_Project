@@ -19,6 +19,8 @@ typedef enum {
     BUZZER_PATTERN_DENIED,         /* one-shot: rough "brrr" — fire refused  */
     BUZZER_PATTERN_RESCUE_OK,      /* one-shot: two blips + long "saved"     */
     BUZZER_PATTERN_RESCUE_FAIL,    /* one-shot: flat error tone, still upside down */
+    BUZZER_PATTERN_CANNON,         /* one-shot: charge-up stutter + long blast */
+    BUZZER_PATTERN_GIANT_DOWN,     /* one-shot: blast + victory fanfare        */
     BUZZER_PATTERN_COUNT
 } BuzzerPattern_t;
 

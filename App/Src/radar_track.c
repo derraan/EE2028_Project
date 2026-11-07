@@ -71,9 +71,11 @@ void RadarTrack_Reset(RadarTrack_HandleTypeDef *h)
     if (h == NULL) {
         return;
     }
+    /* DropTrack queues LOST if a target was locked — keep it, so callers
+     * (mode gate, giant down) report EVT RADAR lost. Only a pending LOCK is
+     * cancelled. */
     DropTrack(h);
     h->evt_lock_pending = 0U;
-    h->evt_lost_pending = 0U;
     h->tgt.contacts = 0U;
 }
 
