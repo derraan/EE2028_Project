@@ -3,6 +3,11 @@
 
 #include "ht16k33.h"
 
+/*
+ * Screens in ResolveScreen() priority order (highest first):
+ * EXPLOSION > LAST_2028 > BATTLE_TEXT > RADAR (locked target; blinks if armed)
+ * > ARMED (charge bar blinks) > CHARGE (steady bar) > BLANK.
+ */
 typedef enum {
     STATUS_SCREEN_BLANK = 0,
     STATUS_SCREEN_RADAR,
@@ -56,9 +61,10 @@ void StatusDisplay_SetRadarStyle(StatusDisplay_HandleTypeDef *h, StatusRadarStyl
 void StatusDisplay_EnterBattle(StatusDisplay_HandleTypeDef *h);
 void StatusDisplay_EnterLastOf2028(StatusDisplay_HandleTypeDef *h);
 /**
- * Drive THE_LAST_OF_2028 digits from the drone's rescue deadline.
- * Enables external-clock mode (skips the internal 10 s banner + 11 s timer;
- * explosion is triggered only via StatusDisplay_TriggerExplosion).
+ * Drive THE_LAST_OF_2028 from the drone's rescue deadline (external clock).
+ * Scrolls THE LAST OF EE2028 until STATUS_LIVE_DIGITS_MS (5 s) remain, then
+ * shows flashing digits. Skips the harness's internal 10 s banner + 11 s timer;
+ * explosion is triggered only via StatusDisplay_TriggerExplosion.
  */
 void StatusDisplay_SetRescueRemainingMs(StatusDisplay_HandleTypeDef *h,
                                         uint32_t remaining_ms);

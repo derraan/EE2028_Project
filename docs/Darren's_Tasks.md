@@ -114,7 +114,7 @@ Create files such as:
 Implement:
 
 - [x] 0–10 charge value mapped to an 8-column progress bar.
-- [x] Full-matrix armed flashing.
+- [x] Armed flashing (as built: the charge bar blinks, not the whole matrix).
 - [x] Radar azimuth mapped to matrix column 0–7 (plus optional 180° dial style).
 - [x] Scrolling `BATTLE MODE` once on mode entry.
 - [x] Repeating `THE LAST OF EE2028` banner text.

@@ -31,8 +31,13 @@ extern "C" {
 typedef enum {
     DRONE_EVENT_NONE = 0,
     DRONE_EVENT_LASER_FIRED,
-    DRONE_EVENT_SELF_DESTRUCT_STARTED
+    DRONE_EVENT_SELF_DESTRUCT_STARTED,
+    DRONE_EVENT_LASER_RECHARGED,   /* Battle single press added +3 charge     */
+    DRONE_EVENT_LASER_DENIED,      /* hold-to-fire refused: charge < 5        */
+    DRONE_EVENT_RESCUE_FAILED      /* double press while still upside down    */
 } DroneEvent_t;
+/* Mode entries (Battle, rescue back to Battle, Standby, THE_LAST_OF_2028) are
+ * not events: Enhancements_Update sees them in the DroneStatus_t snapshot. */
 
 /**
  * Snapshot of drone decisions for the matrix / buzzer.

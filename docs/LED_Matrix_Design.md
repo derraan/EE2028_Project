@@ -139,6 +139,7 @@ flowchart TD
   P3 --> P4["4. Armed full-matrix flash"]
   P4 --> P5["5. Charge bar (0-10 to 8 cols)"]
   P5 --> P6["6. Radar azimuth line (col 0-7)"]
+  %% Original plan order. As built, a locked radar target sits above armed/charge: see 3.4.
 ```
 
 ## New files
@@ -310,17 +311,33 @@ Extra vs original plan API:
 - `StatusDisplay_SetRadarStyle(...)`
 - `dirty` flag for redraw coalescing
 
-## 3.4 Priority (unchanged)
+## 3.4 Priority (updated 2026-11-07)
 
-Still resolved in `ResolveScreen()`:
+Resolved in `ResolveScreen()`:
 
 1. Explosion / terminal blank  
 2. THE_LAST_OF_2028 sequence  
 3. One-time BATTLE MODE scroll  
-4. Armed flash  
-5. Charge bar  
-6. Radar (line or dial)  
+4. Radar: **locked target** (line or dial). When armed, the target line blinks at the armed-flash rate  
+5. Armed (no target): the **charge bar blinks** at `STATUS_ARMED_FLASH_MS` (was a full-matrix `0xFF`/`0x00` flash until 2026-11-07)  
+6. Charge bar  
 7. Blank  
+
+Radar moved above armed/charge because a locked zombie is the most actionable thing on the HUD; before, charge > 0 (almost always) hid it. The adapter only sets an azimuth while the RD-03D tracker holds a lock (`RadarTrack_MatrixColumn` returns `0xFF` otherwise), so without a target the HUD behaves as before.
+
+Live screen per drone mode (adapter, `enhancements.c`):
+
+| Mode | Matrix |
+|---|---|
+| Standby | Locked target → dial needle; else charge bar |
+| Battle entry | `BATTLE MODE` scroll once |
+| Battle | Locked target → line (blinks if armed); else charge bar, blinking when armed (charge ≥ 5) |
+| THE_LAST_OF_2028 | Banner scroll, then digits for the last 5 s |
+| Self-destruct | Explosion, then blank |
+
+## 3.4a Live I2C bus
+
+The adapter brings up **I2C1 on Arduino D15 (PB8, SCL) / D14 (PB9, SDA), AF4** itself (`Enhancements_HW_MatrixI2C()`), because the lab project has no `MX_I2C1_Init`. Timing is computed from PCLK1 for ~100 kHz (the firmware runs on the 4 MHz MSI reset clock). `EE_MATRIX_I2C` defaults to that call; define it as `NULL` to skip the matrix or `&hi2c1` for a CubeMX handle. A missing matrix NACKs at init and the adapter runs without it.
 
 Mode enum name remains **`THE_LAST_OF_2028`** (not any `TEST_OF_*` variant).
 
@@ -330,7 +347,7 @@ Banner string is **`THE LAST OF EE2028`** (not `LAST OF EE2028` / `LAST OF 2028`
 
 ### Live drone path (one 10 s clock)
 
-`Enhancements_Update` feeds `StatusDisplay_SetRescueRemainingMs(rescue_remaining_ms)` from the baseline `RESCUE_TIMEOUT_MS` (10 s). There is **no** second ~21 s display timer in live mode: banner + countdown share the drone’s remaining rescue time. Explosion is triggered via `StatusDisplay_TriggerExplosion` / adapter on self-destruct — not by a separate matrix wall-clock.
+`Enhancements_Update` feeds `StatusDisplay_SetRescueRemainingMs(rescue_remaining_ms)` from the baseline `RESCUE_TIMEOUT_MS` (10 s). There is **no** second ~21 s display timer in live mode: banner + countdown share the drone’s remaining rescue time. The banner scrolls until `STATUS_LIVE_DIGITS_MS` (5 s) remain (one full ~5.1 s pass), then the flashing digits 5…0 take over. (Before 2026-11-07 the live path jumped straight to digits, so the banner never appeared on the drone.) Explosion is triggered via `StatusDisplay_TriggerExplosion` / adapter on self-destruct — not by a separate matrix wall-clock.
 
 Entry helper in firmware is `Enter_The_Last_Of_2028()` in `main.c` (inline `case THE_LAST_OF_2028`); the adapter calls `StatusDisplay_EnterLastOf2028` when the status snapshot first shows that mode.
 

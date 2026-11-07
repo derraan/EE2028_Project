@@ -126,15 +126,40 @@ Uppercase `F`/`X`/`Z` avoid collisions with matrix keys `f`/`x`/`z`.
 
 ## Live adapter ownership
 
-With `-DEE_ENHANCEMENTS=1`, `Enhancements_Update` / `OnEvent` own buzzer playback:
+With `-DEE_ENHANCEMENTS=1`, `Enhancements_Update` / `OnEvent` own buzzer playback. `main.c` reports one-shot actions with `EE_EVENT(...)`; mode changes are read from the `DroneStatus_t` snapshot.
 
-- IR detect → threat chirp
-- `DRONE_EVENT_LASER_FIRED` → laser fire pattern
-- `THE_LAST_OF_2028` with `rescue_remaining_ms` → countdown pattern (`Buzzer_SetCountdown` / Play countdown)
-- `DRONE_EVENT_SELF_DESTRUCT_STARTED` → final burst
-- Rescue / shutdown → `Buzzer_Stop`
+| Drone moment | Source | Pattern |
+|---|---|---|
+| Standby → Battle (double press or T/A/G) | mode change | `BATTLE_ENTRY` |
+| Battle single press, +3 charge | `DRONE_EVENT_LASER_RECHARGED` | `RECHARGE` |
+| Hold-to-fire refused (< 5 charge) | `DRONE_EVENT_LASER_DENIED` | `DENIED` |
+| Shot fired | `DRONE_EVENT_LASER_FIRED` | `LASER_FIRE` |
+| IR detect, radar lock in Battle | adapter | `THREAT_CHIRP` |
+| Enter THE_LAST_OF_2028 | mode change + `rescue_remaining_ms` | `COUNTDOWN` (cadence from `Buzzer_SetCountdown`) |
+| Double press while still upside down | `DRONE_EVENT_RESCUE_FAILED` | `RESCUE_FAIL`, then countdown resumes |
+| Upright rescue → Battle | mode change | `Buzzer_Stop`, then `RESCUE_OK` |
+| Battle → Standby | mode change | `Buzzer_Stop` |
+| Self-destruct | `DRONE_EVENT_SELF_DESTRUCT_STARTED` | `FINAL_BURST`, then latched silent |
+
+New cue rhythms (active buzzer):
+
+| Pattern | Rhythm |
+|---|---|
+| Battle entry | `ON 50` → `OFF 120` → `ON 50` → `OFF 70` → `ON 200` |
+| Recharge | `ON 35` |
+| Denied | `ON 15` / `OFF 15` ×5 (rough "brrr") |
+| Rescue OK | `ON 70` / `OFF 60` ×2 → `ON 400` |
+| Rescue fail | `ON 300` |
+
+Priority (higher wins; `Buzzer_PatternPriority`): recharge = threat chirp 1 < laser fire = denied 2 < battle entry = LAST warning 3 < countdown 4 < rescue fail 5 < rescue OK 6 < final burst 7. Rescue fail outranks the countdown so it is heard over it.
 
 Live path prefers countdown over the standalone `LAST_WARNING` loop. Pin: D2 / PD14 via `enhancements_hw.c`.
+
+### Fixes (2026-11-07)
+
+- **One-shots never ended.** The `{0,0,0}` terminator step was never left, so a finished one-shot stayed active: later lower-priority cues were refused, the countdown could not start after any shot, and `FINAL_BURST` never latched silent (so `Enhancements_FinalEffectsDone()` never returned 1). The step walker now treats a zero-duration step as end-of-pattern.
+- **Countdown held the buzzer on.** `Buzzer_SetCountdown()` restarted the ON step and the adapter calls it every loop tick, so the countdown was one continuous tone. It now only stores the value; the next gap uses it.
+- Regression: `node scripts/test_hud_buzzer_host.mjs` drives the real adapter with a stub HAL and checks every cue above, the countdown acceleration, and the matrix screens.
 
 ## Integration (lab / harness project)
 

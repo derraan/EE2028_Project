@@ -56,28 +56,93 @@ static const BuzzerStep_t kFinalBurst[] = {
     {0U, 0U,   0U}
 };
 
-static const BuzzerPatternDef_t kPatternDefs[BUZZER_PATTERN_COUNT] = {
-    {NULL,         0U, 0U}, /* SILENT */
-    {kThreatChirp, 4U, 0U}, /* THREAT_CHIRP */
-    {kLaserFire,   8U, 0U}, /* LASER_FIRE */
-    {kLastWarning, 2U, 1U}, /* LAST_WARNING */
-    {NULL,         0U, 1U}, /* COUNTDOWN (special-cased) */
-    {kFinalBurst, 12U, 0U}  /* FINAL_BURST */
+/* Entering Battle: three beeps with shrinking gaps, last one held */
+static const BuzzerStep_t kBattleEntry[] = {
+    {1U, 0U,  50U},
+    {0U, 0U, 120U},
+    {1U, 0U,  50U},
+    {0U, 0U,  70U},
+    {1U, 0U, 200U},
+    {0U, 0U,   0U}
 };
 
+/* +3 recharge: one short blip (distinct from the double-tap threat chirp) */
+static const BuzzerStep_t kRecharge[] = {
+    {1U, 0U, 35U},
+    {0U, 0U,  0U}
+};
+
+/* Hold-to-fire refused (<5 charge): fast stutter reads as a rough buzz */
+static const BuzzerStep_t kDenied[] = {
+    {1U, 0U, 15U},
+    {0U, 0U, 15U},
+    {1U, 0U, 15U},
+    {0U, 0U, 15U},
+    {1U, 0U, 15U},
+    {0U, 0U, 15U},
+    {1U, 0U, 15U},
+    {0U, 0U, 15U},
+    {1U, 0U, 15U},
+    {0U, 0U,  0U}
+};
+
+/* Rescued: two quick blips, then a long "saved" tone */
+static const BuzzerStep_t kRescueOk[] = {
+    {1U, 0U,  70U},
+    {0U, 0U,  60U},
+    {1U, 0U,  70U},
+    {0U, 0U,  60U},
+    {1U, 0U, 400U},
+    {0U, 0U,   0U}
+};
+
+/* Rescue refused (still upside down): one flat error tone */
+static const BuzzerStep_t kRescueFail[] = {
+    {1U, 0U, 300U},
+    {0U, 0U,   0U}
+};
+
+#define BUZZER_STEPS(tbl) (tbl), (uint8_t)(sizeof(tbl) / sizeof((tbl)[0]))
+
+static const BuzzerPatternDef_t kPatternDefs[BUZZER_PATTERN_COUNT] = {
+    {NULL,         0U, 0U},                   /* SILENT */
+    {BUZZER_STEPS(kThreatChirp), 0U},         /* THREAT_CHIRP */
+    {BUZZER_STEPS(kLaserFire),   0U},         /* LASER_FIRE */
+    {BUZZER_STEPS(kLastWarning), 1U},         /* LAST_WARNING */
+    {NULL,         0U, 1U},                   /* COUNTDOWN (special-cased) */
+    {BUZZER_STEPS(kFinalBurst),  0U},         /* FINAL_BURST */
+    {BUZZER_STEPS(kBattleEntry), 0U},         /* BATTLE_ENTRY */
+    {BUZZER_STEPS(kRecharge),    0U},         /* RECHARGE */
+    {BUZZER_STEPS(kDenied),      0U},         /* DENIED */
+    {BUZZER_STEPS(kRescueOk),    0U},         /* RESCUE_OK */
+    {BUZZER_STEPS(kRescueFail),  0U}          /* RESCUE_FAIL */
+};
+
+/*
+ * Higher wins; equal priority restarts the cue. Feedback cues the player just
+ * caused (denied, rescue fail) must beat the looping countdown so they are
+ * heard, then the countdown resumes as the base pattern.
+ */
 static uint8_t Buzzer_PatternPriority(BuzzerPattern_t pattern)
 {
     switch (pattern) {
+        case BUZZER_PATTERN_RECHARGE:
         case BUZZER_PATTERN_THREAT_CHIRP:
             return 1U;
         case BUZZER_PATTERN_LASER_FIRE:
+        case BUZZER_PATTERN_DENIED:
             return 2U;
+        case BUZZER_PATTERN_BATTLE_ENTRY:
         case BUZZER_PATTERN_LAST_WARNING:
             return 3U;
         case BUZZER_PATTERN_COUNTDOWN:
             return 4U;
-        case BUZZER_PATTERN_FINAL_BURST:
+        case BUZZER_PATTERN_RESCUE_FAIL:
             return 5U;
+        case BUZZER_PATTERN_RESCUE_OK:
+            return 6U;
+        case BUZZER_PATTERN_FINAL_BURST:
+            return 7U;
         case BUZZER_PATTERN_SILENT:
         case BUZZER_PATTERN_COUNT:
         default:
@@ -180,12 +245,12 @@ void Buzzer_SetCountdown(Buzzer_HandleTypeDef *h, uint8_t value_0_10)
         value_0_10 = 10U;
     }
 
+    /*
+     * Only store the value: the next gap is computed from it, so the cadence
+     * speeds up without restarting the beep. The live adapter calls this every
+     * loop tick; restarting the ON step here held the buzzer on continuously.
+     */
     h->countdown_value = value_0_10;
-    if (h->active_pattern == BUZZER_PATTERN_COUNTDOWN) {
-        h->step_index = 0U;
-        h->step_start_ms = 0U;
-        h->dirty = 1U;
-    }
 }
 
 void Buzzer_Stop(Buzzer_HandleTypeDef *h)
@@ -270,24 +335,32 @@ static void Buzzer_UpdateTablePattern(Buzzer_HandleTypeDef *h,
     if ((step->duration_ms > 0U) && (elapsed_ms >= step->duration_ms)) {
         h->step_index++;
         h->step_start_ms = now_ms;
-
-        if (h->step_index >= def->count) {
-            if (def->loop != 0U) {
-                h->step_index = 0U;
-            } else {
-                if (pattern == BUZZER_PATTERN_FINAL_BURST) {
-                    h->latched_silent = 1U;
-                    h->base_pattern = BUZZER_PATTERN_SILENT;
-                }
-                Buzzer_ResumeBase(h);
-                return;
-            }
-        }
-
-        step = &def->steps[h->step_index];
         h->dirty = 1U;
     }
 
+    /*
+     * End of table, or a {0,0,0} terminator step. Before this check the
+     * terminator was never left (duration 0 never "elapsed"), so a finished
+     * one-shot stayed active forever: lower-priority cues were refused, the
+     * countdown loop could not start after any shot, and FINAL_BURST never
+     * latched silent so Enhancements_FinalEffectsDone() never returned 1.
+     */
+    if ((h->step_index >= def->count) ||
+        (def->steps[h->step_index].duration_ms == 0U)) {
+        if (def->loop != 0U) {
+            h->step_index = 0U;
+        } else {
+            if (pattern == BUZZER_PATTERN_FINAL_BURST) {
+                h->latched_silent = 1U;
+                h->base_pattern = BUZZER_PATTERN_SILENT;
+            }
+            Buzzer_Apply(h, 0U, 0U);
+            Buzzer_ResumeBase(h);
+            return;
+        }
+    }
+
+    step = &def->steps[h->step_index];
     Buzzer_Apply(h, step->on, step->freq_hz);
 }
 
@@ -308,6 +381,11 @@ void Buzzer_Update(Buzzer_HandleTypeDef *h, uint32_t now_ms)
         case BUZZER_PATTERN_LASER_FIRE:
         case BUZZER_PATTERN_LAST_WARNING:
         case BUZZER_PATTERN_FINAL_BURST:
+        case BUZZER_PATTERN_BATTLE_ENTRY:
+        case BUZZER_PATTERN_RECHARGE:
+        case BUZZER_PATTERN_DENIED:
+        case BUZZER_PATTERN_RESCUE_OK:
+        case BUZZER_PATTERN_RESCUE_FAIL:
             Buzzer_UpdateTablePattern(h, now_ms, h->active_pattern);
             break;
         case BUZZER_PATTERN_COUNT:

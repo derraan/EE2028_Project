@@ -93,6 +93,8 @@ void Enhancements_Init(const Enhancements_Config_t *cfg)
     s_ee.matrix_dev = cfg->matrix;
     if (s_ee.matrix_dev != NULL) {
         StatusDisplay_Init(&s_ee.status, s_ee.matrix_dev);
+        /* Drone boots in Standby: radar shown as the 180° dial there. */
+        StatusDisplay_SetRadarStyle(&s_ee.status, STATUS_RADAR_DIAL);
         s_ee.matrix_ok = 1U;
     }
 
@@ -284,6 +286,25 @@ void Enhancements_OnEvent(DroneEvent_t event, uint32_t now_ms)
             }
             break;
 
+        case DRONE_EVENT_LASER_RECHARGED:
+            if (s_ee.have_buzzer != 0U) {
+                Buzzer_Play(&s_ee.buzzer, BUZZER_PATTERN_RECHARGE);
+            }
+            break;
+
+        case DRONE_EVENT_LASER_DENIED:
+            if (s_ee.have_buzzer != 0U) {
+                Buzzer_Play(&s_ee.buzzer, BUZZER_PATTERN_DENIED);
+            }
+            break;
+
+        case DRONE_EVENT_RESCUE_FAILED:
+            if (s_ee.have_buzzer != 0U) {
+                /* Beats the countdown loop, which then resumes. */
+                Buzzer_Play(&s_ee.buzzer, BUZZER_PATTERN_RESCUE_FAIL);
+            }
+            break;
+
         case DRONE_EVENT_NONE:
         default:
             break;
@@ -310,18 +331,28 @@ void Enhancements_Update(const DroneStatus_t *status, uint32_t now_ms)
     /* --- Mode transitions observed from snapshot --- */
     if (mode != s_ee.last_mode) {
         if (mode == BATTLE_MODE) {
+            if (s_ee.matrix_ok != 0U) {
+                StatusDisplay_SetRadarStyle(&s_ee.status, STATUS_RADAR_LINE);
+            }
             if (s_ee.in_last != 0U) {
                 /* Rescue: THE_LAST_OF_2028 → BATTLE */
                 if (s_ee.matrix_ok != 0U) {
                     StatusDisplay_Rescue(&s_ee.status);
                 }
                 if (s_ee.have_buzzer != 0U) {
-                    Buzzer_Stop(&s_ee.buzzer);
+                    Buzzer_Stop(&s_ee.buzzer); /* end countdown loop */
+                    Buzzer_Play(&s_ee.buzzer, BUZZER_PATTERN_RESCUE_OK);
                 }
                 RelayEffect_Reset(&s_ee.relay);
                 s_ee.in_last = 0U;
-            } else if (s_ee.matrix_ok != 0U) {
-                StatusDisplay_EnterBattle(&s_ee.status);
+            } else {
+                /* Standby → Battle (double press or T/A/G threshold) */
+                if (s_ee.matrix_ok != 0U) {
+                    StatusDisplay_EnterBattle(&s_ee.status);
+                }
+                if (s_ee.have_buzzer != 0U) {
+                    Buzzer_Play(&s_ee.buzzer, BUZZER_PATTERN_BATTLE_ENTRY);
+                }
             }
         } else if (mode == THE_LAST_OF_2028) {
             s_ee.in_last = 1U;
@@ -336,6 +367,7 @@ void Enhancements_Update(const DroneStatus_t *status, uint32_t now_ms)
             s_ee.in_last = 0U;
             if (s_ee.matrix_ok != 0U) {
                 StatusDisplay_SetArmed(&s_ee.status, 0U);
+                StatusDisplay_SetRadarStyle(&s_ee.status, STATUS_RADAR_DIAL);
             }
             if (s_ee.have_buzzer != 0U) {
                 Buzzer_Stop(&s_ee.buzzer);

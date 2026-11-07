@@ -26,8 +26,8 @@ High-impact extras for the spaceship drone, biased toward **hardware we already 
 | | |
 |--|--|
 | **What** | One 8×8 display presents every main feature: charge state, armed state, radar azimuth, mode changes and self-destruct countdown |
-| **Charging** | Fill a 0–8 column progress bar. Once fully charged / armed, flash the full matrix until fired |
-| **Radar** | Draw a moving vertical line whose horizontal position represents target azimuth from left to right (API + harness; live adapter does not feed azimuth yet) |
+| **Charging** | Fill a 0–8 column progress bar. Once armed (charge ≥ 5/10 in Battle), the bar itself blinks until charge drops below 5 (the rest of the matrix stays dark) |
+| **Radar** | Draw a moving vertical line whose horizontal position represents the locked RD-03D target's azimuth, left to right (Battle). Standby shows the same lock as a 180° dial needle. Fed live by the adapter (`RadarTrack_MatrixColumn`) |
 | **Mode text** | Scroll `BATTLE MODE` once when Battle begins. Scroll `THE LAST OF EE2028` repeatedly for the whole THE_LAST_OF_2028 mode |
 | **Countdown** | Live path: one 10 s drone clock via `rescue_remaining_ms` / `StatusDisplay_SetRescueRemainingMs`. Harness may still use a longer standalone sequence. At `0`, explosion frame then blank |
 | **Hooks** | `status_display` + `Enhancements_Update` from `DroneStatus_t` snapshots |
@@ -40,11 +40,11 @@ Only one image fits on an 8×8 matrix, so use this priority:
 1. Explosion frame / shutdown
 2. THE_LAST_OF_2028 countdown and repeating text
 3. One-time `BATTLE MODE` transition text
-4. Armed flashing
-5. Charging progress
-6. Radar azimuth line
+4. Locked radar target (line in Battle, dial in Standby; the line blinks when armed)
+5. Armed flashing
+6. Charging progress
 
-Mode text temporarily interrupts the normal screen. Radar tracking resumes after `BATTLE MODE` finishes scrolling. In THE_LAST_OF_2028, the repeating warning and countdown override radar and charging.
+Mode text temporarily interrupts the normal screen. Radar tracking resumes after `BATTLE MODE` finishes scrolling. A locked zombie outranks the armed flash and charge bar because it is the most actionable thing on the HUD; with no lock the armed flash / charge bar show as before. In THE_LAST_OF_2028, the repeating warning and countdown override radar and charging: the live 10 s window scrolls `THE LAST OF EE2028` until 5 s remain, then flashes the digits 5…0.
 
 ### 2. IR threat / “zombie” detect — **as shipped (observe-only)**
 | | |
@@ -211,7 +211,7 @@ If #1–#4 are stable by **Day 9**, use the remaining development time for Wi‑
 
 ## Checklist
 
-- [x] I2C bus / address for matrix (injectable; live needs `EE_MATRIX_I2C`)  
+- [x] I2C bus / address for matrix: I2C1 on D15/D14 (PB8/PB9), 0x70, brought up by `Enhancements_HW_MatrixI2C()` (default `EE_MATRIX_I2C`)  
 - [x] IR pin + active level (D3/PB0 active-LOW)  
 - [x] Buzzer type (active ON/OFF on D2/PD14)  
 - [x] Ship **#1–#4** (source + adapter + VESPER; on-board verify pending Cube)  
