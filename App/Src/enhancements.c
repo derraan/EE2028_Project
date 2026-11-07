@@ -409,7 +409,7 @@ void Enhancements_Update(const DroneStatus_t *status, uint32_t now_ms)
     if (s_ee.have_ir != 0U) {
         IR_Update(&s_ee.ir, now_ms);
         if (IR_PollThreat(&s_ee.ir) != 0U) {
-            printf("IR threat detected (enhancement only — no mode change).\r\n");
+            Telemetry_Printf("IR threat detected (enhancement only - no mode change).");
             if (s_ee.have_buzzer != 0U) {
                 Buzzer_Play(&s_ee.buzzer, BUZZER_PATTERN_THREAT_CHIRP);
             }

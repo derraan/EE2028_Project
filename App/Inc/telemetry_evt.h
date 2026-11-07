@@ -27,9 +27,15 @@ extern "C" {
 #define EVT_REASON_EARLY         "early"
 
 /**
- * Low-level line writer (appends \\r\\n). Default weak impl uses printf
- * (semihosting) so mission lines still appear in CubeIDE until a strong
- * USART override is linked — see App/Src/telemetry_uart_hal.c.example.
+ * Start USART1 (ST-LINK Virtual COM, PB6/PB7) at 115200 8N1 for telemetry.
+ * Call once right after HAL_Init(). Implemented in telemetry_uart.c.
+ */
+void Telemetry_UartInit(void);
+
+/**
+ * Low-level line writer (appends \\r\\n). On the board, telemetry_uart.c sends
+ * it to the ST-LINK COM port. The weak default in telemetry_evt.c (printf) is
+ * only used by host tests that do not link telemetry_uart.c.
  */
 void Telemetry_WriteLine(const char *line);
 

@@ -78,7 +78,7 @@ All steps are in the CubeIDE GUI so they work on any PC. Replace `<REPO>` with y
 4. Right-click `App/Test` → **Resource Configurations → Exclude from Build…** → tick **all** configurations. (These are bench sketches with their own entry points.)
 5. Right-click `App` → **Properties → C/C++ General → Paths and Symbols → Source Location**: confirm `/EE2028_Project/App` is listed for every configuration (add it with **Add Folder…** if not).
 
-`App/Src/telemetry_uart_hal.c.example` has a non-`.c` extension, so it is ignored automatically.
+`App/Src/telemetry_uart.c` (mission telemetry on the ST-LINK COM port) is part of the linked `App/Src`, so it builds automatically.
 
 ### 3.3 Include paths
 
@@ -180,15 +180,20 @@ Each configuration builds into its own folder, created on first build. `Enhanced
 
 Tip: duplicate the launch once per configuration (`EE2028_Project Debug`, `EE2028_Project Enhanced`) so switching is one click.
 
-### Semihosting
+### Telemetry → VESPER / Tera Term
 
-`main.c` calls `initialise_monitor_handles()`, and telemetry defaults to `printf`. Output appears in the CubeIDE **Console** and **only while a debug session is attached**. Started without the debugger (power cycle, or Run instead of Debug), the firmware stalls at the first `printf`. Always start it with **Debug**.
+All mission lines (prose, sensor lines, `EVT …`) go to the **ST-LINK Virtual COM port** (USART1, PB6/PB7) at **115200 8N1**, from `App/Src/telemetry_uart.c`. Both Debug and Enhanced builds do this; nothing to configure.
 
-To get output on the ST-LINK virtual COM port for Tera Term / VESPER instead, see §9.
+1. Flash with **Debug** as above, then either keep the session running or stop it: the board runs on its own from USB power (semihosting starts only when a debugger is attached).
+2. Find the port: Windows **Device Manager → Ports (COM & LPT) → STMicroelectronics STLink Virtual COM Port (COMn)**.
+3. **VESPER:** `node Command/serve.mjs` → open http://localhost:3000 in **Chrome or Edge** → **Connect board** → pick that COM port. The toast shows `Board connected @ 115200`.
+4. Or **Tera Term / PuTTY**: same COM port, 115200 8N1.
+
+Only one program can hold the COM port: close Tera Term before connecting VESPER. Plain `printf` (debug notes) still goes to the CubeIDE Console over semihosting, only while debugging; mission text never uses it.
 
 ### First-flash checks
 
-**Debug (baseline)** — from `docs/Next_Steps.md`: prove LED2, the USER button and one telemetry line in the Console before flashing **Enhanced** or wiring Grove hardware.
+**Debug (baseline)** — from `docs/Next_Steps.md`: prove LED2, the USER button and the `Drone initialized: Entering STANDBY MODE` line plus a `Telemetry -> T:…` line every second on the COM port (VESPER or Tera Term) before flashing **Enhanced** or wiring Grove hardware.
 
 **Enhanced** — with the matrix and buzzer wired (§3.6):
 
@@ -241,7 +246,8 @@ If text on the matrix is mirrored or upside down, note which and see `docs/LED_M
 | Error Log: `com.st.stm32cube.ide.mpu.remote.serial … Failed to parse wmic output` | Recent Windows 11 removed `wmic`; the MPU serial-port scanner logs this | Harmless for STM32L4. Not a build error |
 | Launch fails: `Failed to execute MI command: monitor arm semihosting enable … Protocol error with Rcmd` | Debug probe set to **ST-LINK GDB server**, which does not understand this OpenOCD command (CubeIDE can switch the probe when a launch is edited or created with **Debug As**) | Debugger tab → **ST-LINK (OpenOCD)**, port 3333, Automated script (§5 step 4) |
 | `undefined reference to 'initialise_monitor_handles'` | Building **Release**, which does not link `rdimon` | Use Debug or Enhanced (§3.5) |
-| Board appears hung, no output | Started without the debugger while semihosting is on | Start with **Debug** (§5) |
+| VESPER / Tera Term shows nothing | Wrong COM port, another program holds it, or old firmware without `telemetry_uart.c` | Pick the **STLink Virtual COM Port**, close other terminals, F5 + rebuild + flash. Reset the board (black button) to see the boot lines again |
+| VESPER **Connect board** does nothing | Browser without Web Serial | Use Chrome or Edge on http://localhost:3000 |
 | Matrix stays dark on Enhanced | Not on D15/D14, no power/GND, or the build is **Debug** (enhancements compiled out) | Check §3.6 wiring and that the **Enhanced** `.elf` was flashed. The firmware skips a matrix that does not answer at 0x70 |
 | No buzzer / matrix changes after `git pull` | CubeIDE did not see the new files | **F5**, **Project → Clean…**, rebuild |
 | Radar never locks with an RD-03E | Wrong module: the parser is for RD-03D | See the RD-03E note in §3.6 |
@@ -265,7 +271,6 @@ make -j8 all
 
 ## 9. Not done yet
 
-- **USART telemetry for VESPER / Tera Term.** The Assignment 2 template does not initialise USART1, so telemetry still goes over semihosting. To switch: initialise USART1 @ 115200 8N1 (`huart1`), copy `App/Src/telemetry_uart_hal.c.example` to a `.c` file in the build, add `EE_TELEMETRY_USART=1`. See the comments in that file and `docs/Telemetry_EVT_Contract.md`.
 - **Radar hardware bring-up** (RD-03D). Servo direction/trim, radar mirroring, parallax and laser-off-at-boot checks: `docs/Radar_Aim_Design.md`.
 - The project links the repo by absolute path. If the repo moves, update the links (**Properties → Resource → Linked Resources**) and the two include paths.
 

@@ -6,12 +6,12 @@ Unified **mission UART** stream for Tera Term and VESPER. One message per line (
 
 | Path | API | Transport | Audience |
 |------|-----|-----------|----------|
-| **Mission UART** | `Telemetry_WriteLine` / `Telemetry_Printf` / `Telemetry_SendSensors` / `Telemetry_Evt*` | USART → ST-LINK VCP @ **115200 8N1** (strong override) | Tera Term + VESPER |
-| **Debug** | plain `printf` | Semihosting → CubeIDE Console | Developer only |
+| **Mission UART** | `Telemetry_WriteLine` / `Telemetry_Printf` / `Telemetry_SendSensors` / `Telemetry_Evt*` | USART1 (PB6/PB7) → ST-LINK VCP @ **115200 8N1** | Tera Term + VESPER |
+| **Debug** | plain `printf` | Semihosting → CubeIDE Console (only while a debugger is attached) | Developer only |
 
-Until the Cube strong override is linked, the weak `Telemetry_WriteLine` falls back to `printf` so mission lines still appear in CubeIDE. That fallback is temporary — after USART lands, keep `printf` for debug notes only; never send mission/EVT text through raw `printf`.
+On the board, [`App/Src/telemetry_uart.c`](../App/Src/telemetry_uart.c) provides the strong `Telemetry_WriteLine` (blocking `HAL_UART_Transmit`, `<line>\r\n`); `main.c` calls `Telemetry_UartInit()` right after `HAL_Init()`. The weak `printf` fallback in `telemetry_evt.c` is only used by host tests. Never send mission/EVT text through raw `printf`.
 
-Enable USART TX: copy [`App/Src/telemetry_uart_hal.c.example`](../App/Src/telemetry_uart_hal.c.example) into the Cube project, set `EE_TELEMETRY_USART=1`.
+Regression: `node scripts/test_vesper_ingest.mjs` builds the real `telemetry_evt.c` on the host, emits a full mission in `main.c` order, and feeds the exact CRLF byte stream to VESPER's parser in random chunks.
 
 Firmware helpers: [`App/Inc/telemetry_evt.h`](../App/Inc/telemetry_evt.h), [`App/Src/telemetry_evt.c`](../App/Src/telemetry_evt.c).
 
