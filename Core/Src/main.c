@@ -34,7 +34,7 @@
 #define EE_EVENT(evt) ((void)0)
 #endif
 
-/* CubeIDE console debug only — mission / VESPER traffic uses Telemetry_*. */
+/* CubeIDE console debug only (printf) — mission / VESPER traffic uses Telemetry_* over UART. */
 extern void initialise_monitor_handles(void); /* semihosting printf */
 
 /* Define thresholds */
@@ -109,10 +109,18 @@ static void Enhancements_Tick(void);
 
 int main(void)
 {
-	initialise_monitor_handles(); /* for semi-hosting support (printf) */
+	/* Semihosting (CubeIDE console printf) only when a debugger is attached:
+	 * without one the semihosting call faults, so the board could not run from
+	 * plain USB power. Mission telemetry does not need it (UART below). */
+	if ((CoreDebug->DHCSR & CoreDebug_DHCSR_C_DEBUGEN_Msk) != 0U) {
+		initialise_monitor_handles();
+	}
 
 	/* Reset of all peripherals, Initializes the Flash interface and the Systick. */
 	HAL_Init();
+
+	/* Mission telemetry → ST-LINK Virtual COM (USART1 115200 8N1) for Tera Term / VESPER. */
+	Telemetry_UartInit();
 
 	/* Peripheral and Board Initializations using BSP functions */
 	BSP_LED_Init(LED2);

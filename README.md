@@ -106,7 +106,7 @@ More UI detail: [Command/README.md](Command/README.md).
 1. In STM32CubeIDE, create or open a **B-L4S5I-IOT01A** project; keep the `.ioc` in (or next to) this repo.
 2. Add `App/Inc` + `App/Src` (and `Core/` app files) to include paths and the build.
 3. Confirm USER button EXTI on **both edges**, USART1 @ **115200 8N1** (ST-LINK VCP), I2C2 for on-board sensors.
-4. Enable USART1 @ 115200 (`telemetry_uart_hal.c.example` + `EE_TELEMETRY_USART=1`). Mission traffic is already on `Telemetry_*`; keep CubeIDE `printf` for debug only.
+4. Mission telemetry goes to the ST-LINK Virtual COM port (USART1 @ 115200 8N1) via `App/Src/telemetry_uart.c` — connect VESPER (Chrome/Edge **Connect board**) or Tera Term to that COM port. CubeIDE `printf` is for debug only.
 5. Build, flash, prove LED + button + one telemetry line before enabling extras.
 
 Full checklist: [docs/Next_Steps.md](docs/Next_Steps.md).
