@@ -209,6 +209,7 @@ Only one program can hold the COM port: close Tera Term before connecting VESPER
 | Double press while still upside down | — | 300 ms error tone, then beeps resume |
 | Upright + double press (rescue) | `BATTLE MODE` scrolls | Two blips + long "saved" tone |
 | Wait out 10 s / 5 failed rescues | Explosion, then blank | Final burst, then silent. Relay D4 HIGH |
+| Every 5 s (Enhanced) | — (telemetry: `Radar link: rx=… frames ok=…`, see `docs/Radar_Aim_Design.md` bring-up step 2) | — |
 | RD-03D locks a person (when fitted) | Standby: dial needle. Battle: line at their azimuth (blinks if armed) | Threat chirp in Battle |
 
 If text on the matrix is mirrored or upside down, note which and see `docs/LED_Matrix_Design.md` §3.1.

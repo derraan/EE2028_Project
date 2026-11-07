@@ -45,6 +45,8 @@ typedef struct {
     uint8_t have_radar;
     uint8_t last_radar_col;
     uint32_t radar_evt_ms;
+    uint32_t radar_t0_ms;      /* first Radar_Update tick (0 = not yet) */
+    uint8_t radar_cmd_resends; /* multi-target command resent at +1 s, +3 s */
 
     DroneState_t last_mode;
     uint8_t last_charge;
@@ -197,6 +199,23 @@ static void Radar_Update(DroneState_t mode, uint32_t now_ms)
         uint8_t rx[EE_RADAR_RX_CHUNK];
         uint8_t chunks;
         RD03D_Frame_t frame;
+        uint32_t since;
+
+        /* The radar may still be booting when Init sends the multi-target
+         * command at power-up; repeat it at +1 s and +3 s. Harmless if it
+         * already took effect. */
+        if (s_ee.radar_t0_ms == 0U) {
+            s_ee.radar_t0_ms = (now_ms == 0U) ? 1U : now_ms;
+        }
+        since = now_ms - s_ee.radar_t0_ms;
+        if ((s_ee.radar_io.write != NULL) &&
+            (((s_ee.radar_cmd_resends == 0U) && (since >= 1000U)) ||
+             ((s_ee.radar_cmd_resends == 1U) && (since >= 3000U)))) {
+            uint8_t cmd[RD03D_CMD_LEN];
+            uint8_t len = RD03D_BuildTrackingModeCmd(cmd, 1U);
+            s_ee.radar_io.write(s_ee.radar_io.ctx, cmd, len);
+            s_ee.radar_cmd_resends++;
+        }
 
         /* Always drain so the parser stays in sync, even while not tracking. */
         for (chunks = 0U; chunks < EE_RADAR_RX_MAX_CHUNKS; chunks++) {
@@ -248,6 +267,16 @@ static void Radar_Update(DroneState_t mode, uint32_t now_ms)
 const RadarTarget_t *Enhancements_RadarTarget(void)
 {
     return &s_ee.track.tgt;
+}
+
+void Enhancements_RadarFrameStats(uint32_t *frames_ok, uint32_t *frames_bad)
+{
+    if (frames_ok != NULL) {
+        *frames_ok = s_ee.radar_parser.frames_ok;
+    }
+    if (frames_bad != NULL) {
+        *frames_bad = s_ee.radar_parser.frames_bad;
+    }
 }
 
 const LaserAim_HandleTypeDef *Enhancements_LaserAim(void)
