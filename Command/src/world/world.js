@@ -6,6 +6,9 @@
  *     events passed into `update()`. The world only *expresses* them.
  *   - Meteors, zombies, kills and waves are game fiction layered on top.
  *     They never feed back into drone state.
+ *   - Radar lock (EVT RADAR) is firmware truth: the world places / pins a
+ *     zombie at the reported azimuth + range, and draws the laser pointer
+ *     only while the firmware says laser=1.
  */
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -18,6 +21,8 @@ import { createDrone } from './drone.js';
 import { createHorde } from './zombies.js';
 
 const FIELD_RADIUS = [22, 32];
+/** World units per real metre for radar ranges (RD-03D 6 m ≈ 24 units of field). */
+export const RADAR_WORLD_PER_M = 4;
 
 export function createWorld(host, { audio, adaptive = true } = {}) {
   const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
@@ -146,14 +151,19 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
     });
   }
 
+  // Radar lock binding (see update): the zombie the firmware is aiming at.
+  const radarTrack = { zombie: null, point: new THREE.Vector3(), locked: false, laser: false, az: null, rangeM: null, spawnCooldown: 0 };
+  const torso = new THREE.Vector3();
+
   function fireLaser() {
     const from = drone.muzzle().clone();
-    const z = horde.priorityTarget(drone.position);
+    const rz = radarTrack.zombie;
+    const z = rz && rz.alive && rz.state !== 'die' ? rz : horde.priorityTarget(drone.position);
     drone.recoil();
     audio?.laser();
     rig.shake = Math.max(rig.shake, 0.18);
     if (z) {
-      const hit = horde.headPosition(z).setY(1.4);
+      const hit = horde.torsoPosition(z);
       fx.laser(from, hit);
       horde.kill(z, drone.position);
       game.kills += 1;
@@ -173,7 +183,7 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
   }
 
   // ------------------------------------------------------------ stats
-  const stats = { kills: 0, wave: 0, infected: 0, nearest: null, contacts: [], drone: { x: 0, z: 0, heading: 0 } };
+  const stats = { kills: 0, wave: 0, infected: 0, nearest: null, contacts: [], drone: { x: 0, z: 0, heading: 0 }, radar: null };
 
   function computeStats() {
     stats.kills = game.kills;
@@ -191,6 +201,9 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
       if (!best || d < best.dist) best = { dist: d, bearing: (THREE.MathUtils.radToDeg(Math.atan2(dx, dz)) + 360) % 360 };
     }
     stats.nearest = best;
+    stats.radar = radarTrack.locked
+      ? { az: radarTrack.az, rangeM: radarTrack.rangeM, laser: radarTrack.laser, x: radarTrack.point.x, z: radarTrack.point.z }
+      : null;
     return stats;
   }
 
@@ -219,8 +232,9 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
   /**
    * @param {number} dt seconds
    * @param {number} t  seconds since start
-   * @param {{mode:string, ended:boolean, selfDestructing:boolean}} view parser-derived
-   * @param {{fired:number, tripped:number, attacked:number, rescued:number, telemetry:boolean, terminated:boolean}} ev new events this frame
+   * @param {{mode:string, ended:boolean, selfDestructing:boolean, radar?:object, simRadar?:boolean}} view parser-derived
+   *        (radar = parser state.radar; simRadar = contacts came from this world, so don't move zombies)
+   * @param {{fired:number, tripped:number, attacked:number, rescued:number, telemetry:boolean, terminated:boolean, radarLocked?:number}} ev new events this frame
    */
   function update(dt, t, view, ev) {
     const mode = view.mode;
@@ -280,10 +294,37 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
       game.groanTimer = 2.5 + Math.random() * 4;
     }
 
+    // --- radar lock (firmware truth) → which zombie the pan laser is on
+    const rv = view.radar;
+    const locked = Boolean(rv && rv.lock && rv.az != null && rv.rangeMm != null && !down && !view.ended);
+    radarTrack.locked = locked;
+    radarTrack.laser = locked && Boolean(rv.laser);
+    radarTrack.spawnCooldown = Math.max(0, radarTrack.spawnCooldown - dt);
+    let radarZombie = null;
+    if (locked) {
+      const a = THREE.MathUtils.degToRad(rv.az); // radar boresight = world +z, +az → +x
+      const r = (rv.rangeMm / 1000) * RADAR_WORLD_PER_M;
+      radarTrack.az = rv.az;
+      radarTrack.rangeM = rv.rangeMm / 1000;
+      radarTrack.point.set(drone.position.x + Math.sin(a) * r, 0, drone.position.z + Math.cos(a) * r);
+      radarZombie = horde.nearestTo(radarTrack.point, view.simRadar ? 3 : 7);
+      if (!radarZombie && !view.simRadar && radarTrack.spawnCooldown <= 0) {
+        // Live board saw someone we have no zombie for — one claws up there.
+        horde.spawn(radarTrack.point, 1, { delay: 0 });
+        radarTrack.spawnCooldown = 2;
+      }
+      if (ev.radarLocked) {
+        audio?.blip(880, 0.08, 'square', 0.12);
+        fx.ring(radarTrack.point, { color: 0xff4050, radius: 3, life: 0.5 });
+      }
+    }
+    radarTrack.zombie = radarZombie;
+
     // --- actors
     horde.setTarget(down ? 'drone' : 'lab', drone.position);
     const priority = battle && !down ? horde.priorityTarget(drone.position) : null;
-    drone.track(priority ? horde.headPosition(priority).setY(1.2) : null);
+    if (radarZombie) drone.track(horde.torsoPosition(radarZombie, torso));
+    else drone.track(priority ? horde.headPosition(priority).setY(1.2) : null);
     drone.update(dt, t, mode, { down, ended: view.ended });
     horde.update(dt, t, {
       onDeath: (p) => fx.disintegrate(p),
@@ -291,6 +332,12 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
         if (down) fx.sparks(drone.position.clone().setY(0.9), 0xffd27a);
       },
     });
+    if (radarZombie && !view.simRadar) horde.follow(radarZombie, radarTrack.point, dt);
+    fx.pointer(
+      drone.muzzle().clone(),
+      locked ? (radarZombie ? horde.torsoPosition(radarZombie, torso) : torso.copy(radarTrack.point).setY(1.35)) : null,
+      { laser: radarTrack.laser && drone.root.visible, dt }
+    );
     env.setAlarm(down ? 1 : view.ended ? 0.4 : 0);
     env.update(dt, t);
     fx.update(dt);
@@ -348,6 +395,15 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
     /** Optional manual spawn (virtual-board "meteor" control already trips T/A/G). */
     launchWave,
     labCenter: LAB_CENTER,
+    /** Drone position + live contacts in radar mm (x right, y = world +z), for the virtual RD-03D. */
+    radarContacts() {
+      const out = [];
+      for (const c of horde.contacts()) {
+        if (c.rising) continue;
+        out.push({ x: ((c.x - drone.position.x) / RADAR_WORLD_PER_M) * 1000, y: ((c.z - drone.position.z) / RADAR_WORLD_PER_M) * 1000 });
+      }
+      return out;
+    },
     /** Debug access for ?debug sessions. */
     debug: { camera, drone, horde, rig, renderer, scene, composer, bloom },
   };

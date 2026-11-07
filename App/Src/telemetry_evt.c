@@ -137,3 +137,35 @@ void Telemetry_EvtAttack(void)
 {
 	Telemetry_WriteLine("EVT ATTACK");
 }
+
+/* Fixed-point tenths → "-12.4" without relying on printf float support. */
+static void FormatTenths(char *out, size_t n, int16_t tenths)
+{
+	int v = (int)tenths;
+	const char *sign = (v < 0) ? "-" : "";
+	if (v < 0) {
+		v = -v;
+	}
+	(void)snprintf(out, n, "%s%d.%d", sign, v / 10, v % 10);
+}
+
+void Telemetry_EvtRadar(int16_t az_ddeg, uint16_t range_mm, uint8_t locked,
+                        int16_t pan_ddeg, uint8_t laser_on, uint8_t contacts)
+{
+	char buf[112];
+	char az[12];
+	char pan[12];
+
+	FormatTenths(az, sizeof(az), az_ddeg);
+	FormatTenths(pan, sizeof(pan), pan_ddeg);
+	(void)snprintf(buf, sizeof(buf),
+		"EVT RADAR az=%s range_mm=%u lock=%u pan=%s laser=%u n=%u",
+		az, (unsigned)range_mm, (unsigned)(locked != 0U), pan,
+		(unsigned)(laser_on != 0U), (unsigned)contacts);
+	Telemetry_WriteLine(buf);
+}
+
+void Telemetry_EvtRadarLost(void)
+{
+	Telemetry_WriteLine("EVT RADAR lost");
+}

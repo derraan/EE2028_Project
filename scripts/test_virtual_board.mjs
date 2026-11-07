@@ -159,4 +159,86 @@ function rig() {
   assert(r.s.missionEnded && r.s.lastSelfDestructReason === 'rescue_limit', `rescue-limit SD, got ${r.s.lastSelfDestructReason}`);
 }
 
+// ---------------------------------------------------------------- radar (enhancement #5)
+const { RADAR, AIM, formatRadarLine } = await load('Command/src/radar_mirror.js');
+const radarLines = (r) => r.lines.filter((l) => l.startsWith('EVT RADAR'));
+
+// Wire format matches Telemetry_EvtRadar() (fixed-point tenths, no float printf)
+assert(
+  formatRadarLine({ az: -12.44, range: 1830.6, lock: true, pan: -0.04, laser: false, n: 2 }) ===
+    'EVT RADAR az=-12.4 range_mm=1830 lock=1 pan=0.0 laser=0 n=2',
+  'radar line format'
+);
+assert(formatRadarLine({ az: 0.05, range: 500, lock: 1, pan: -7.25, laser: 1, n: 1 }).includes('az=0.1 ') , 'round half away from zero');
+
+// Standby: confirm → lock, servo tracks, laser stays off
+{
+  const r = rig();
+  r.board.setRadarContacts([{ x: 500, y: 2000 }]);
+  r.advance(RADAR.FRAME_PERIOD_MS * (RADAR.CONFIRM_FRAMES - 1) - 20);
+  assert(!r.s.radar.lock, 'no lock before confirm frames');
+  r.advance(200);
+  assert(r.s.radar.lock && r.s.radarLockSeq === 1, `standby lock, got ${JSON.stringify(r.s.radar)}`);
+  assert(Math.abs(r.s.radar.az - 14.0) < 0.3, `az≈14°, got ${r.s.radar.az}`);
+  assert(Math.abs(r.s.radar.rangeMm - 2061) <= 2, `range≈2061, got ${r.s.radar.rangeMm}`);
+  r.advance(1000);
+  assert(!r.s.radar.laser, 'standby never lights the laser');
+  assert(Math.abs(r.s.radar.pan - 14.0) < 0.5, `servo tracks in standby, pan=${r.s.radar.pan}`);
+  const n = radarLines(r).length;
+  r.advance(1000);
+  const per = radarLines(r).length - n;
+  assert(per >= 3 && per <= 5, `EVT RADAR ~4 Hz while locked, got ${per}/s`);
+  assert(r.s.mode === 'STANDBY_MODE' && r.s.fireSeq === 0, 'radar has no mode / fire authority');
+}
+
+// Battle: laser lights once aligned; FIRE strobes; lost → laser off + EVT lost
+{
+  const r = rig();
+  r.double();
+  r.single();
+  r.single(); // 6/10 armed
+  r.board.setRadarContacts([{ x: -1200, y: 2100 }]); // ~-29.7°
+  r.advance(400);
+  assert(r.s.radar.lock, 'battle lock');
+  r.advance(500);
+  assert(r.s.radar.laser && Math.abs(r.s.radar.pan - r.s.radar.az) < AIM.ALIGNED_TOL_DEG, `laser on target, ${JSON.stringify(r.s.radar)}`);
+  r.hold(SIM.HOLD_MS + 100);
+  assert(r.s.fireSeq === 1, 'hold-to-fire unchanged by radar');
+  r.advance(AIM.FIRE_STROBE_MS);
+  assert(r.board.snapshot.radar.laser, 'laser steady again after strobe');
+  r.board.setRadarContacts([]);
+  r.advance(RADAR.LOST_TIMEOUT_MS + 100);
+  assert(!r.s.radar.lock && !r.s.radar.laser && r.lines.includes('EVT RADAR lost'), 'lost clears lock + laser');
+  assert(r.s.radarLockSeq === 1, 'one lock so far');
+}
+
+// Out of FOV / too close / too far are ignored; a nearer zombie steals the lock
+{
+  const r = rig();
+  r.board.setRadarContacts([{ x: 3000, y: 1000 }, { x: 0, y: 250 }, { x: 0, y: 7000 }]);
+  r.advance(1000);
+  assert(!r.s.radar.lock && radarLines(r).length === 0, 'gated contacts produce no EVT RADAR');
+  r.board.setRadarContacts([{ x: 0, y: 4000 }]);
+  r.advance(500);
+  assert(r.s.radar.lock && Math.abs(r.s.radar.az) < 1, 'far zombie locked');
+  r.board.setRadarContacts([{ x: 0, y: 4000 }, { x: 1500, y: 1500 }]);
+  r.advance(600);
+  assert(r.s.radarLockSeq === 2 && r.s.radar.az > 40, `nearer zombie re-locked az=${r.s.radar.az}`);
+}
+
+// Overturn drops the track and parks the servo; nothing after Cheerio!
+{
+  const r = rig();
+  r.double();
+  r.board.setRadarContacts([{ x: 0, y: 2000 }]);
+  r.advance(500);
+  assert(r.s.radar.lock, 'locked before overturn');
+  r.board.setUpsideDown(true);
+  r.advance(60);
+  assert(r.s.mode === 'THE_LAST_OF_2028' && !r.s.radar.lock, 'Last of EE2028 clears radar');
+  assert(r.board.snapshot.radar.aim === 'SAFE' && !r.board.snapshot.radar.laser, 'servo safe, laser off');
+  r.advance(SIM.RESCUE_TIMEOUT_MS + SIM.TERMINATE_DELAY_MS + 400);
+  assert(r.lines.at(-1) === 'Cheerio!', 'radar prints nothing after Cheerio!');
+}
+
 console.log('OK — virtual board follows firmware rules through the shared parser');

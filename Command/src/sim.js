@@ -16,7 +16,12 @@
  *  - THE_LAST_OF_2028: ATTACK + COUNTDOWN every 1 s; upright double-press
  *    rescues to Battle; 5 failed upside-down rescues or 10 s → self-destruct.
  *  - Self-destruct: sacrifice line, then 1 s later EVT TERMINATE + Cheerio!
+ *
+ * Enhancement #5 (RD-03D radar + pan laser) runs after the state machine each
+ * tick, exactly like Enhancements_Tick() in main.c — see radar_mirror.js.
+ * Its contacts are whatever the caller places in front of the virtual radar.
  */
+import { createRadarMirror } from './radar_mirror.js';
 
 export const SIM = Object.freeze({
   DOUBLE_PRESS_MS: 500,
@@ -42,8 +47,10 @@ const f1 = (n) => (Math.abs(n) < 0.05 ? 0 : n).toFixed(1);
  */
 export function createVirtualBoard(emit) {
   let s;
+  const radar = createRadarMirror(emit);
 
   function reset(now = 0) {
+    radar.reset(now);
     s = {
       state: STANDBY,
       charge: 0,
@@ -212,6 +219,7 @@ export function createVirtualBoard(emit) {
             s.charge -= 5;
             emit(`Laser gun fired continuously! PEW PEW! (Remaining charge: ${s.charge}/10)`);
             emit(`EVT FIRE charge=${s.charge}/10`);
+            radar.fire(now); // Enhancements_OnEvent(DRONE_EVENT_LASER_FIRED)
             if (s.charge < 5) {
               emit(`Laser charge too low (${s.charge}/10) to fire! Please single-press to recharge the laser gun.`);
               s.lowChargeWarned = true;
@@ -248,6 +256,9 @@ export function createVirtualBoard(emit) {
       default:
         break;
     }
+
+    // Enhancements_Tick(): radar → tracker → pan/laser (silent once halted).
+    if (s.state !== SD_DEAD) radar.tick(now, s.state, s.state === SD_TRIGGERED);
   }
 
   function pressDown(now) {
@@ -292,6 +303,10 @@ export function createVirtualBoard(emit) {
     disturb() {
       if (s.state === STANDBY) s.tripPending = true;
     },
+    /** What stands in front of the virtual RD-03D: [{x, y}] in mm (x right, y forward). */
+    setRadarContacts(list) {
+      radar.setContacts(list);
+    },
     get snapshot() {
       return {
         state: s.state,
@@ -300,6 +315,7 @@ export function createVirtualBoard(emit) {
         holding: s.down && s.holdLatched,
         rescueAttempts: s.rescueAttempts,
         halted: s.state === SD_DEAD,
+        radar: radar.snapshot,
       };
     },
   };

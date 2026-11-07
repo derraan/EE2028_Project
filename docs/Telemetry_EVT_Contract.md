@@ -51,6 +51,8 @@ Threshold violation lines from PR #3 (e.g. `T:40.10 C, exceeds threshold…`) re
 | `EVT ATTACK` | Optional | Pairs with `Drone was attacked!` prose |
 | `EVT RESCUE` | Optional | Pairs with successful rescue prose |
 | `EVT THRESHOLD_OK` | Optional | Clear sticky threshold warning |
+| `EVT RADAR az=… range_mm=… lock=1 pan=… laser=0\|1 n=…` | RD-03D lock, then every 250 ms while locked | Enhancement #5. `az`/`pan` in degrees (one decimal, + = right of boresight). See `docs/Radar_Aim_Design.md` |
+| `EVT RADAR lost` | Locked track dropped (timeout, or leaving Standby/Battle) | Clears the lock in VESPER |
 
 Example stream (plan shape):
 
@@ -83,6 +85,8 @@ VESPER’s parser also accepts **legacy aliases** for old logs only: `THE_LAST_O
 Wired from `main.c` today: mission prose via `Telemetry_Printf`, sensors via `Telemetry_SendSensors`, and EVT `MODE`, `CHARGE`, `FIRE`, `COUNTDOWN`, `ATTACK`, `RESCUE`, `SELF_DESTRUCT`, `TERMINATE`.
 
 Implemented helper but **not** called from live `main.c` yet: `Telemetry_EvtThresholdOk` (parser clears sticky thresholds on the next good sensor line).
+
+Wired from the enhancements adapter when built with `EE_ENHANCEMENTS=1 EE_RADAR_AIM=1`: `EVT RADAR …` / `EVT RADAR lost` (`Radar_Update` in `enhancements.c`).
 
 Harness / optional only (not live adapter): `EVT IR=…`, `EVT CAP_EXPLODE=…`, `EVT THREAT=…`. Live IR is prose + chirp; live relay is GPIO via `Enhancements_OnEvent(DRONE_EVENT_SELF_DESTRUCT_STARTED, …)`.
 

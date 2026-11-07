@@ -209,22 +209,23 @@ Hardware notes:
 
 Deliverable: countdown-zero / `x` produces one controlled GPIO HIGH with no startup glitch. See `docs/Relay_Design.md`.
 
-## Task 6 — Radar/servo flow without radar hardware
+## Task 6 — RD-03D zombie azimuth + pan-laser aim ✅ code + host tests (hardware bring-up pending)
 
-**Keep this task.** It is the stretch path for **azimuth / 2‑DOF aim** (matrix column + pan/tilt). Build the mapping logic with simulated targets even if the real module cannot provide XY.
+Scope settled 2026-11-07: **Ai-Thinker RD-03D** (multi-target X/Y), **azimuth only**, radar **fixed** with **one pan servo** carrying the laser. No tilt. The laser is mounted at chest height. Design, wiring and bring-up: `docs/Radar_Aim_Design.md`.
 
 Tasks:
 
-- [ ] Define a `RadarTarget` structure containing valid flag, azimuth, elevation, range and timestamp.
-- [ ] Convert test azimuth values into matrix columns 0–7.
-- [ ] Convert bounded azimuth/elevation into pan/tilt command angles.
-- [ ] Add clamping, neutral position, stale-target timeout and maximum slew rate.
-- [ ] Generate fake moving targets to exercise the display and aiming flow.
-- [ ] Keep parser/transport separate so the eventual radar module can be swapped.
+- [x] `RadarTarget_t` (valid, locked, x/y, velocity, azimuth, range, contacts, timestamps) in `radar_track.h`. No elevation: the RD-03D is 2-D.
+- [x] RD-03D frame parser + multi-target command (`rd03d.c`), kept separate from transport (`RD03D_Transport_t`).
+- [x] Tracker: nearest threat, range/FOV gates, 3-frame confirm, association gate, lock steal, 700 ms stale timeout.
+- [x] Azimuth → matrix columns 0–7 (±60°).
+- [x] Azimuth → parallax-corrected pan angle, with clamping, neutral park, hold-after-lost and max slew rate (`laser_aim.c`).
+- [x] Laser gate (Battle ∧ locked ∧ aligned ∧ reachable) + FIRE strobe. No mode or fire authority.
+- [x] `EVT RADAR …` / `EVT RADAR lost` telemetry; VESPER parser, virtual RD-03D mirror and 3D lock/laser view.
+- [x] Host tests (`scripts/test_radar_aim_host.mjs`) + virtual-board radar scenarios.
+- [ ] On-hardware bring-up checklist (sign, trim, parallax, laser-off-at-boot). See the design doc.
 
-Do **not** assume every mmWave module reports angle. The **RD-03E** we have is primarily a **ranging / human presence** module and may **not** provide usable XY tracking — use **Task 6a** for the hardware-backed first prototype.
-
-Deliverable: simulated target sweeps left→right on the matrix and produces bounded servo commands.
+Deliverable: a zombie walking left→right is locked, followed on the matrix and by the servo, and the laser lights on its body only in Battle.
 
 ## Task 6a — RD-03E ranging + separate peace-sign registration (preliminary)
 
