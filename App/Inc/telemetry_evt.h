@@ -55,6 +55,15 @@ void Telemetry_EvtThresholdOk(void);                     /* clear sticky thresho
 void Telemetry_EvtRescue(void);                          /* optional; human rescue lines still OK */
 void Telemetry_EvtAttack(void);                          /* optional; pairs with attack prose */
 
+/**
+ * Radar zombie track (enhancement #5). Angles in tenths of a degree,
+ * + = right of boresight. Emits e.g.
+ *   EVT RADAR az=-12.4 range_mm=1830 lock=1 pan=-11.9 laser=1 n=2
+ */
+void Telemetry_EvtRadar(int16_t az_ddeg, uint16_t range_mm, uint8_t locked,
+                        int16_t pan_ddeg, uint8_t laser_on, uint8_t contacts);
+void Telemetry_EvtRadarLost(void);                       /* EVT RADAR lost */
+
 #ifdef __cplusplus
 }
 #endif

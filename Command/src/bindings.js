@@ -152,10 +152,21 @@ export function bindHud(state, world) {
   setText('infected', String(world.infected));
   setText('kills', String(world.kills));
   setText('wave', String(world.wave));
+  // RD-03D lock is firmware-reported (EVT RADAR); the contact list is fiction.
+  const rd = state.radar;
+  const radarLine =
+    rd && rd.lock && rd.az != null
+      ? `RD-03D LOCK ${rd.az > 0 ? '+' : ''}${rd.az.toFixed(1)}° · ${rd.rangeMm != null ? (rd.rangeMm / 1000).toFixed(1) : '?'} m · ${
+          rd.laser ? 'LASER ON TARGET' : state.mode === 'BATTLE_MODE' ? 'SLEWING' : 'TRACKING · LASER SAFE'
+        }`
+      : null;
   setText(
     'nearest',
-    world.nearest ? `NEAREST ${world.nearest.dist.toFixed(0)} m · BRG ${String(Math.round(world.nearest.bearing)).padStart(3, '0')}°` : 'NO CONTACTS'
+    radarLine ||
+      (world.nearest ? `NEAREST ${world.nearest.dist.toFixed(0)} m · BRG ${String(Math.round(world.nearest.bearing)).padStart(3, '0')}°` : 'NO CONTACTS')
   );
+  $('nearest').classList.toggle('lock', Boolean(radarLine));
+  setText('radarTag', radarLine ? 'RD-03D LOCK' : 'SIMULATED');
 
   // Emergency overlay
   $('emergency').hidden = !alarm || state.missionEnded;

@@ -81,10 +81,10 @@ The GPIO drives the relay module's control input, not a relay coil directly. The
 ### 5. mmWave radar projectile detection + 2‑DOF auto-aim laser
 | | |
 |--|--|
-| **What** | mmWave module detects incoming / nearby “projectiles” or targets; two servos pan (**yaw / lateral**) and tilt (**pitch / elevation**) to aim a laser pointer (or LED “laser”) at the track |
+| **What** | RD-03D mmWave radar detects and localises (azimuth) the nearest person / "zombie"; a pan servo aims a low-power laser pointer at their body (implemented as azimuth-only. Tilt was dropped because the RD-03D reports no elevation) |
 | **Why** | Strong wow feature; real sensing + actuation beyond IR |
-| **Hardware** | mmWave module (UART/GPIO, e.g. RD-03 / similar), **2× hobby servos** on a pan-tilt bracket, laser diode / bright LED, TIM PWM for both servos |
-| **Hooks** | Threat flag → Battle; aim loop updates servo angles from radar; map target azimuth to both pan servo angle and the matrix's eight horizontal positions; fire when aligned + `laser_charge` ready |
+| **Hardware** | Ai-Thinker **RD-03D** on UART4 (D0/D1, 256000 baud), **1× hobby servo** on TIM3_CH1 (D5), Class 1 laser module on D7. Radar fixed; servo pans the laser only |
+| **Hooks** | Detection only (no mode / fire authority); tracker → parallax-corrected pan angle + matrix column; laser lights in Battle when locked + aligned; `EVT FIRE` strobes it; `EVT RADAR` to VESPER. See `docs/Radar_Aim_Design.md` |
 | **Effort** | High (driver + coordinate mapping + mechanical mount) |
 | **Safety** | Low-power laser / LED only; lab eye-safety rules; no high-energy beam |
 

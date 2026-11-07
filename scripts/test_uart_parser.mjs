@@ -70,4 +70,24 @@ p2.markDisconnect();
 assert(p2.state.link === 'severed', 'disconnect severs link');
 assert(p2.state.missionEnded === false, 'disconnect must not end mission');
 
+// EVT RADAR (enhancement #5)
+{
+  const p = createParser();
+  p.pushLine('EVT MODE=BATTLE_MODE');
+  p.pushLine('EVT RADAR az=-12.4 range_mm=1830 lock=1 pan=-11.9 laser=1 n=2');
+  const r = p.state.radar;
+  assert(r.lock && r.az === -12.4 && r.rangeMm === 1830 && r.pan === -11.9 && r.laser && r.contacts === 2, `radar parsed ${JSON.stringify(r)}`);
+  assert(p.state.radarAz === -12.4 && p.state.radarLockSeq === 1, 'legacy radarAz + lock seq');
+  p.pushLine('EVT RADAR az=-10.0 range_mm=1800 lock=1 pan=-10.2 laser=0 n=1');
+  assert(p.state.radarLockSeq === 1 && !p.state.radar.laser, 'track update is not a new lock');
+  p.pushLine('EVT RADAR lost');
+  assert(!p.state.radar.lock && p.state.radar.az === null && p.state.radarAz === null, 'lost clears');
+  p.pushLine('EVT RADAR az=5.0 range_mm=900 lock=1 pan=4.0 laser=1 n=1');
+  assert(p.state.radarLockSeq === 2, 'relock counts');
+  p.pushLine('EVT MODE=THE_LAST_OF_2028');
+  assert(!p.state.radar.lock, 'Last of EE2028 clears radar');
+  p.pushLine('EVT RADAR az=3'); // old harness shape still parses (degrees)
+  assert(p.state.radar.az === 3 && p.state.radar.lock, 'bare az tolerated');
+}
+
 console.log('OK — UART/EVT parser fixtures passed');

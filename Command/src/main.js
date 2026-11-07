@@ -9,6 +9,9 @@
  * The world turns *new parsed events* into spectacle (laser on EVT FIRE,
  * meteor wave on a T/A/G trip, shockwave on EVT RESCUE, blast on TERMINATE).
  * Zombies, kills and waves are fiction and never feed back into drone state.
+ * In simulation the zombies stand in front of the *virtual* RD-03D (like a
+ * person in front of the real one); the lock and laser still only appear once
+ * the board prints EVT RADAR.
  */
 import { parser, getState, resetMission, notify } from './state.js';
 import { bindHud, invalidateHud } from './bindings.js';
@@ -41,13 +44,14 @@ function syncSeen(state) {
     tripSeq: state.tripSeq,
     attackSeq: state.attackSeq,
     rescueSeq: state.rescueSeq,
+    radarLockSeq: state.radarLockSeq,
     telemetryAt: state.telemetryAt,
     missionEnded: state.missionEnded,
   };
 }
 
 function takeEvents(state) {
-  if (!seen || state.fireSeq < seen.fireSeq || state.tripSeq < seen.tripSeq || state.attackSeq < seen.attackSeq) {
+  if (!seen || state.fireSeq < seen.fireSeq || state.tripSeq < seen.tripSeq || state.attackSeq < seen.attackSeq || state.radarLockSeq < seen.radarLockSeq) {
     syncSeen(state); // a reset swapped counters back to 0 — don't replay old effects
     world.reset();
   }
@@ -56,6 +60,7 @@ function takeEvents(state) {
     tripped: state.tripSeq - seen.tripSeq,
     attacked: state.attackSeq - seen.attackSeq,
     rescued: state.rescueSeq - seen.rescueSeq,
+    radarLocked: state.radarLockSeq - seen.radarLockSeq,
     telemetry: Boolean(state.telemetryAt) && state.telemetryAt !== seen.telemetryAt,
     terminated: state.missionEnded && !seen.missionEnded,
   };
@@ -262,10 +267,18 @@ function frame(now) {
   previous = now;
   clock += dt;
 
-  if (source === 'simulation') board.tick(now);
+  if (source === 'simulation') {
+    board.setRadarContacts(world.radarContacts());
+    board.tick(now);
+  }
   const state = getState();
   const ev = takeEvents(state);
-  const stats = world.update(dt, clock, { mode: state.mode, ended: state.missionEnded, selfDestructing: state.selfDestructing }, ev);
+  const stats = world.update(
+    dt,
+    clock,
+    { mode: state.mode, ended: state.missionEnded, selfDestructing: state.selfDestructing, radar: state.radar, simRadar: source === 'simulation' },
+    ev
+  );
   radar.draw(dt, stats, { alarm: state.mode === 'THE_LAST_OF_2028' || state.selfDestructing, active: !state.missionEnded });
   if (source === 'simulation') updateSimControls(state);
   bindHud(state, stats);

@@ -7,6 +7,7 @@
  * Bench: App/Test/enhancements_bench.c feeds the same API from UART keys.
  *
  * Compile with -DEE_ENHANCEMENTS=1 to include. Default off keeps PR #3 baseline.
+ * Radar + laser aim additionally need -DEE_RADAR_AIM=1 (see enhancements_hw.h).
  */
 #ifndef ENHANCEMENTS_H
 #define ENHANCEMENTS_H
@@ -18,6 +19,9 @@
 #include "buzzer.h"
 #include "ir_threat.h"
 #include "relay_effect.h"
+#include "rd03d.h"
+#include "radar_track.h"
+#include "laser_aim.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -49,6 +53,14 @@ typedef struct {
     const IR_Config_t *ir_cfg;
     const Relay_Backend_t *relay;
     const Relay_Config_t *relay_cfg;
+
+    /* Enhancement #5 — RD-03D zombie radar + pan-servo laser (azimuth only).
+     * radar NULL → no tracking; servo/laser NULL → tracking + EVT only. */
+    const RD03D_Transport_t *radar;
+    const RadarTrack_Config_t *radar_cfg;  /* NULL → RadarTrack_DefaultConfig */
+    const Servo_Backend_t *servo;
+    const Laser_Backend_t *laser;
+    const LaserAim_Config_t *aim_cfg;      /* NULL → LaserAim_DefaultConfig */
 } Enhancements_Config_t;
 
 void Enhancements_Init(const Enhancements_Config_t *cfg);
@@ -57,6 +69,12 @@ void Enhancements_Update(const DroneStatus_t *status, uint32_t now_ms);
 
 /** 1 when explosion / final burst / relay pulse (if any) have finished. */
 uint8_t Enhancements_FinalEffectsDone(uint32_t now_ms);
+
+/** Current radar track (never NULL after Init; valid=0 when no zombie). */
+const RadarTarget_t *Enhancements_RadarTarget(void);
+
+/** Pan / laser controller state (bench + debug). */
+const LaserAim_HandleTypeDef *Enhancements_LaserAim(void);
 
 /** Force outputs quiet / relay LOW (call before permanent halt if needed). */
 void Enhancements_Shutdown(void);

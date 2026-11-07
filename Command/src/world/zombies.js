@@ -161,6 +161,36 @@ export function createHorde(scene) {
       return best;
     },
 
+    /** Living (non-dying, above-ground) zombie nearest to `point` within `maxDist`. */
+    nearestTo(point, maxDist = Infinity) {
+      let best = null;
+      let bestD = maxDist;
+      for (const z of pool) {
+        if (!z.alive || z.state === 'die' || z.state === 'rise') continue;
+        const d = Math.hypot(z.pos.x - point.x, z.pos.z - point.z);
+        if (d < bestD) {
+          bestD = d;
+          best = z;
+        }
+      }
+      return best;
+    },
+
+    /** Drag a zombie toward a firmware-reported radar position (live UART / replay). */
+    follow(z, point, dt) {
+      if (!z || !z.alive || z.state === 'die') return;
+      const d = Math.hypot(z.pos.x - point.x, z.pos.z - point.z);
+      const k = d > 6 ? 1 : 1 - Math.exp(-dt * 3);
+      z.pos.x += (point.x - z.pos.x) * k;
+      z.pos.z += (point.z - z.pos.z) * k;
+      z.g.position.x = z.pos.x;
+      z.g.position.z = z.pos.z;
+    },
+
+    torsoPosition(z, out = new THREE.Vector3()) {
+      return out.copy(z.pos).setY(1.35);
+    },
+
     headPosition(z, out = new THREE.Vector3()) {
       return out.copy(z.pos).setY(1.9);
     },

@@ -2,6 +2,8 @@
  * HUD contact radar (2D canvas). Shows *simulated* contacts from the world,
  * centred on the drone, field (+z) at the top. Styled after the concept's
  * "Contact detected" screen: ice-blue rings, red contacts, sweeping beam.
+ * A firmware RD-03D lock (stats.radar) adds the ±60° sensor cone, a bearing
+ * line and a reticle on the locked zombie.
  */
 export function createRadar(canvas) {
   const ctx = canvas.getContext('2d');
@@ -93,6 +95,40 @@ export function createRadar(canvas) {
         ctx.fill();
         ctx.shadowBlur = 0;
       });
+
+      // RD-03D field of view (boresight = +z = up) and firmware lock
+      const fov = (60 * Math.PI) / 180;
+      const rr = ((6 * 4) / RANGE) * r; // 6 m × RADAR_WORLD_PER_M
+      ctx.strokeStyle = 'rgba(255,90,110,0.22)';
+      ctx.setLineDash([w * 0.01, w * 0.015]);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, Math.min(rr, r), -Math.PI / 2 - fov, -Math.PI / 2 + fov);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (stats.radar) {
+        const x = sx(stats.radar.x);
+        const y = sy(stats.radar.z);
+        ctx.strokeStyle = stats.radar.laser ? 'rgba(255,70,90,0.95)' : 'rgba(255,170,90,0.85)';
+        ctx.lineWidth = Math.max(1, w / 150);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        const k = w * 0.035;
+        ctx.beginPath();
+        ctx.arc(x, y, k, 0, Math.PI * 2);
+        ctx.moveTo(x - k * 1.6, y);
+        ctx.lineTo(x - k * 0.6, y);
+        ctx.moveTo(x + k * 0.6, y);
+        ctx.lineTo(x + k * 1.6, y);
+        ctx.moveTo(x, y - k * 1.6);
+        ctx.lineTo(x, y - k * 0.6);
+        ctx.moveTo(x, y + k * 0.6);
+        ctx.lineTo(x, y + k * 1.6);
+        ctx.stroke();
+      }
 
       // drone at centre, nose = heading
       ctx.rotate(stats.drone.heading); // heading +y-rot turns +z toward +x = clockwise on screen

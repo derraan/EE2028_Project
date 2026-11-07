@@ -141,6 +141,26 @@ export function createEffects(scene) {
     return { g, core, outer, life: 0 };
   });
 
+  // ---- radar pointer: thin continuous beam + body dot + ground lock reticle.
+  // Shown only while firmware reports EVT RADAR lock (and laser=1 for the beam).
+  const pointer = (() => {
+    const core = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(5, 0.5, 0.7), transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
+    const beam = new THREE.Group();
+    beam.add(core);
+    beam.visible = false;
+    scene.add(beam);
+    const dot = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: new THREE.Color(4, 0.4, 0.6), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    dot.scale.setScalar(0.7);
+    dot.visible = false;
+    scene.add(dot);
+    const reticleGeo = new THREE.RingGeometry(0.9, 1.05, 48, 1);
+    reticleGeo.rotateX(-Math.PI / 2);
+    const reticle = new THREE.Mesh(reticleGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 0.3, 0.4), transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    reticle.visible = false;
+    scene.add(reticle);
+    return { beam, core, dot, reticle, t: 0 };
+  })();
+
   // ---- flashes (sprite + point light)
   const flashes = Array.from({ length: 6 }, () => {
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
@@ -247,6 +267,33 @@ export function createEffects(scene) {
       flash(from, { color: 0xff5060, size: 2.2, life: 0.18, light: 25 });
       flash(to, { color: 0xff6a70, size: 4, life: 0.3, light: 45 });
       particles.burst(to, { count: 40, color: 0xff5a4a, speed: 7, life: 0.7, size: 0.45, gravity: -9 });
+    },
+
+    /**
+     * Radar lock cue. `target` null hides everything; `laser` lights the beam
+     * from `from` to the zombie's torso (azimuth-only aim → chest height).
+     */
+    pointer(from, target, { laser = false, dt = 0 } = {}) {
+      const p = pointer;
+      p.t += dt;
+      if (!target) {
+        p.beam.visible = p.dot.visible = p.reticle.visible = false;
+        return;
+      }
+      p.reticle.visible = true;
+      p.reticle.position.set(target.x, 0.07, target.z);
+      p.reticle.rotation.y = p.t * 1.6;
+      p.reticle.scale.setScalar(1.1 + Math.sin(p.t * 6) * 0.08);
+      p.beam.visible = p.dot.visible = laser;
+      if (!laser) return;
+      tmp.subVectors(target, from);
+      const len = tmp.length();
+      p.beam.position.copy(from);
+      p.beam.quaternion.setFromUnitVectors(up, tmp.normalize());
+      const w = 0.035 + Math.sin(p.t * 40) * 0.006;
+      p.core.scale.set(w, len, w);
+      p.dot.position.copy(target);
+      p.dot.scale.setScalar(0.55 + Math.sin(p.t * 25) * 0.08);
     },
 
     disintegrate(position) {

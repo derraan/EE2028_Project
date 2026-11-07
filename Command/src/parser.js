@@ -30,6 +30,18 @@ export const UNITS = {
   Magneto: 'mgauss',
 };
 
+export function createEmptyRadar() {
+  return {
+    lock: false,
+    az: null, // degrees, + = right of radar boresight
+    rangeMm: null,
+    pan: null, // commanded servo angle, degrees
+    laser: false, // laser pointer currently lit on the zombie
+    contacts: 0,
+    at: null, // Date.now() of the last EVT RADAR
+  };
+}
+
 export function createEmptyState() {
   return {
     link: 'idle', // idle | sim | uart | replay | severed
@@ -62,7 +74,12 @@ export function createEmptyState() {
     /** Date.now() of the last parsed Telemetry -> line. */
     telemetryAt: null,
     ir: false,
+    /** Legacy alias of radar.az (degrees). */
     radarAz: null,
+    /** Enhancement #5 — RD-03D zombie track as reported by EVT RADAR. */
+    radar: createEmptyRadar(),
+    /** Increments on every new lock (lock 0→1) so views can react once. */
+    radarLockSeq: 0,
     events: [],
     rawLog: [],
     /** Total non-empty lines ingested (rawLog is capped; this is not). */
@@ -166,6 +183,10 @@ export function parseLine(state, line) {
       case 'MODE': {
         const mode = normalizeMode(kv.mode || bare || rest);
         if (mode) state.mode = mode;
+        if (state.mode !== 'STANDBY_MODE' && state.mode !== 'BATTLE_MODE') {
+          state.radar = createEmptyRadar();
+          state.radarAz = null;
+        }
         if (state.mode !== 'THE_LAST_OF_2028') {
           state.countdownMs = null;
           state.countdownAt = null;
@@ -208,6 +229,8 @@ export function parseLine(state, line) {
       case 'TERMINATE': {
         state.missionEnded = true;
         state.mode = 'TERMINATED';
+        state.radar = createEmptyRadar();
+        state.radarAz = null;
         state.selfDestructing = false;
         state.countdownMs = null;
         state.countdownAt = null;
@@ -239,9 +262,28 @@ export function parseLine(state, line) {
         return { kind: 'evt', name, ir: state.ir };
       }
       case 'RADAR': {
-        state.radarAz = kv.az != null ? Number(kv.az) : null;
-        pushEvent(state, `RADAR az=${state.radarAz}`);
-        return { kind: 'evt', name, az: state.radarAz };
+        const r = state.radar;
+        if (/^lost\b/i.test(rest)) {
+          Object.assign(r, createEmptyRadar(), { at: Date.now() });
+          state.radarAz = null;
+          pushEvent(state, 'RADAR lost');
+          return { kind: 'evt', name, lost: true };
+        }
+        const num = (v) => (v == null || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
+        const wasLocked = r.lock;
+        r.az = num(kv.az);
+        r.rangeMm = num(kv.range_mm ?? kv.range);
+        r.pan = num(kv.pan);
+        r.lock = kv.lock == null ? r.az != null : kv.lock === '1' || kv.lock === 'true';
+        r.laser = kv.laser === '1' || kv.laser === 'true';
+        r.contacts = num(kv.n) ?? (r.lock ? 1 : 0);
+        r.at = Date.now();
+        if (r.lock && !wasLocked) state.radarLockSeq += 1;
+        state.radarAz = r.az;
+        if (!wasLocked && r.lock) {
+          pushEvent(state, `RADAR lock az=${r.az}° ${r.rangeMm ?? '?'} mm`);
+        }
+        return { kind: 'evt', name, radar: { ...r } };
       }
       default:
         pushEvent(state, trimmed);

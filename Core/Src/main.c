@@ -127,6 +127,13 @@ int main(void)
 	{
 		Enhancements_Config_t ee_cfg;
 		(void)Enhancements_HW_Setup(&ee_cfg, EE_MATRIX_I2C);
+#if defined(EE_RADAR_AIM) && (EE_RADAR_AIM != 0)
+		/* RD-03D on UART4 (D0/D1), pan servo on TIM3_CH1 (D5), laser on D7.
+		 * Detection + aiming only: modes, charge and hold-to-fire stay here. */
+		if (Enhancements_HW_SetupRadarAim(&ee_cfg) != 0) {
+			Telemetry_Printf("Radar/laser aim hardware init incomplete - continuing without it.");
+		}
+#endif
 		Enhancements_Init(&ee_cfg);
 	}
 #endif

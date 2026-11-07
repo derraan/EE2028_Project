@@ -164,6 +164,7 @@ code { font: 12px var(--mono); color: var(--cyan); }
 #infected { color: var(--toxic); text-shadow: 0 0 12px rgba(141, 255, 106, 0.4); }
 #kills { color: var(--red-soft); }
 .nearest { display: block; margin-top: 9px; font: 11px var(--mono); color: var(--muted); text-align: center; letter-spacing: 0.06em; }
+.nearest.lock { color: #ff6a7a; text-shadow: 0 0 8px rgba(255, 70, 90, 0.55); }
 
 /* Telemetry */
 .sensor-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
