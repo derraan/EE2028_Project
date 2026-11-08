@@ -34,8 +34,14 @@ typedef enum {
     DRONE_EVENT_SELF_DESTRUCT_STARTED,
     DRONE_EVENT_LASER_RECHARGED,   /* Battle single press added +3 charge     */
     DRONE_EVENT_LASER_DENIED,      /* hold-to-fire refused: charge < 5        */
-    DRONE_EVENT_RESCUE_FAILED      /* double press while still upside down    */
+    DRONE_EVENT_RESCUE_FAILED,     /* double press while still upside down    */
+    DRONE_EVENT_CANNON_FIRED       /* giant cannon shot: 10/10 spent on a locked giant */
 } DroneEvent_t;
+
+/* Giant cannon: a radar-locked target is a giant. Hits to destroy one, and
+ * how long the physical laser (the cannon) stays lit per shot. */
+#define EE_GIANT_HP          2U
+#define EE_CANNON_BEAM_MS    1000U
 /* Mode entries (Battle, rescue back to Battle, Standby, THE_LAST_OF_2028) are
  * not events: Enhancements_Update sees them in the DroneStatus_t snapshot. */
 
@@ -77,6 +83,16 @@ uint8_t Enhancements_FinalEffectsDone(uint32_t now_ms);
 
 /** Current radar track (never NULL after Init; valid=0 when no zombie). */
 const RadarTarget_t *Enhancements_RadarTarget(void);
+
+/**
+ * 1 when the giant cannon can fire: the radar holds a lock (a giant) and the
+ * self-destruct sequence has not started. main.c adds the Battle + 10/10
+ * charge rule and owns the charge; the adapter owns giant HP.
+ */
+uint8_t Enhancements_CannonReady(void);
+
+/** RD-03D frames parsed OK / with a bad footer since boot (bring-up check). */
+void Enhancements_RadarFrameStats(uint32_t *frames_ok, uint32_t *frames_bad);
 
 /** Pan / laser controller state (bench + debug). */
 const LaserAim_HandleTypeDef *Enhancements_LaserAim(void);

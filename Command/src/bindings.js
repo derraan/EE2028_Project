@@ -152,13 +152,17 @@ export function bindHud(state, world) {
   setText('infected', String(world.infected));
   setText('kills', String(world.kills));
   setText('wave', String(world.wave));
-  // RD-03D lock is firmware-reported (EVT RADAR); the contact list is fiction.
+  // RD-03D lock is firmware-reported (EVT RADAR); the lock is a GIANT. HP and
+  // cannon readiness are firmware too (EVT GIANT, charge 10/10 in Battle).
   const rd = state.radar;
+  const hp = state.giant?.hp ?? 2;
+  const hpLeft = Math.max(0, hp - (state.giant?.hits ?? 0));
+  const cannonReady = state.mode === 'BATTLE_MODE' && state.charge >= 10;
   const radarLine =
     rd && rd.lock && rd.az != null
-      ? `RD-03D LOCK ${rd.az > 0 ? '+' : ''}${rd.az.toFixed(1)}° · ${rd.rangeMm != null ? (rd.rangeMm / 1000).toFixed(1) : '?'} m · ${
-          rd.laser ? 'LASER ON TARGET' : state.mode === 'BATTLE_MODE' ? 'SLEWING' : 'TRACKING · LASER SAFE'
-        }`
+      ? `GIANT ${'█'.repeat(hpLeft)}${'░'.repeat(hp - hpLeft)} ${rd.az > 0 ? '+' : ''}${rd.az.toFixed(1)}° · ${
+          rd.rangeMm != null ? (rd.rangeMm / 1000).toFixed(1) : '?'
+        } m · ${rd.laser ? 'CANNON FIRING' : cannonReady ? 'CANNON READY · HOLD TO FIRE' : state.mode === 'BATTLE_MODE' ? 'CANNON NEEDS 10/10' : 'TRACKING'}`
       : null;
   setText(
     'nearest',
@@ -166,7 +170,8 @@ export function bindHud(state, world) {
       (world.nearest ? `NEAREST ${world.nearest.dist.toFixed(0)} m · BRG ${String(Math.round(world.nearest.bearing)).padStart(3, '0')}°` : 'NO CONTACTS')
   );
   $('nearest').classList.toggle('lock', Boolean(radarLine));
-  setText('radarTag', radarLine ? 'RD-03D LOCK' : 'SIMULATED');
+  setText('radarTag', radarLine ? 'GIANT LOCK' : 'SIMULATED');
+  setText('giantKills', String(state.giantKills ?? 0));
 
   // Emergency overlay
   $('emergency').hidden = !alarm || state.missionEnded;

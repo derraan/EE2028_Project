@@ -3,6 +3,7 @@
  * @brief GPIO / I2C backends for the shared enhancements adapter.
  */
 #include "enhancements_hw.h"
+#include "telemetry_evt.h"
 #include <string.h>
 
 /* Pin aliases — B-L4S5I-IOT01A Arduino D2/D3/D4; override via Cube main.h. */
@@ -77,6 +78,28 @@ static void Relay_SetOutput(void *ctx, uint8_t high)
                       (high != 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
+/*
+ * The lab project has no CubeMX MX_GPIO_Init, so nothing else turns these port
+ * clocks on (GPIOD in particular: without this the buzzer on PD14 stays silent
+ * because writes to an unclocked port are ignored). Enabling twice is harmless.
+ */
+static void GpioClockEnable(GPIO_TypeDef *port)
+{
+    if (port == GPIOA) {
+        __HAL_RCC_GPIOA_CLK_ENABLE();
+    } else if (port == GPIOB) {
+        __HAL_RCC_GPIOB_CLK_ENABLE();
+    } else if (port == GPIOC) {
+        __HAL_RCC_GPIOC_CLK_ENABLE();
+    } else if (port == GPIOD) {
+        __HAL_RCC_GPIOD_CLK_ENABLE();
+    } else if (port == GPIOE) {
+        __HAL_RCC_GPIOE_CLK_ENABLE();
+    } else {
+        /* other ports unused by the enhancements */
+    }
+}
+
 static void InitOutputLow(GPIO_TypeDef *port, uint16_t pin)
 {
     GPIO_InitTypeDef gpio;
@@ -84,7 +107,7 @@ static void InitOutputLow(GPIO_TypeDef *port, uint16_t pin)
     if (port == NULL) {
         return;
     }
-    /* Clock enable is board-specific; Cube MX_GPIO_Init normally enables ports. */
+    GpioClockEnable(port);
     HAL_GPIO_WritePin(port, pin, GPIO_PIN_RESET);
     gpio.Pin = pin;
     gpio.Mode = GPIO_MODE_OUTPUT_PP;
@@ -100,6 +123,7 @@ static void InitInputPullUp(GPIO_TypeDef *port, uint16_t pin)
     if (port == NULL) {
         return;
     }
+    GpioClockEnable(port);
     gpio.Pin = pin;
     gpio.Mode = GPIO_MODE_INPUT;
     gpio.Pull = GPIO_PULLUP;
@@ -396,6 +420,45 @@ static void Laser_SetOutput(void *ctx, uint8_t on)
     HAL_GPIO_WritePin(p->port, p->pin, (level != 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
+/* Slew the servo to `to_us` in small steps so the sweep is gentle. */
+static void Servo_Glide(uint16_t from_us, uint16_t to_us, uint32_t ms)
+{
+    const uint32_t steps = 25U;
+    uint32_t i;
+    for (i = 1U; i <= steps; i++) {
+        int32_t us = (int32_t)from_us + (((int32_t)to_us - (int32_t)from_us) * (int32_t)i) / (int32_t)steps;
+        Servo_SetPulse(NULL, (uint16_t)us);
+        HAL_Delay(ms / steps);
+    }
+}
+
+void Enhancements_HW_ServoSelfTest(void)
+{
+    /* ±45° around the trimmed centre (~11.1 µs/°), inside EE_SERVO_PAN_LIMIT_DEG. */
+    const int32_t span = 500;
+    const uint16_t c = (uint16_t)EE_SERVO_CENTER_US;
+    const uint16_t left = (uint16_t)((int32_t)c - (span * (int32_t)EE_SERVO_DIRECTION));
+    const uint16_t right = (uint16_t)((int32_t)c + (span * (int32_t)EE_SERVO_DIRECTION));
+
+    if (s_servo_ready == 0U) {
+        Telemetry_Printf("Servo self-test skipped: TIM3 PWM on D5 did not start.");
+        return;
+    }
+    Laser_SetOutput(&s_laser_pin, 0U); /* laser never lights during the self-test */
+    Telemetry_Printf("Servo self-test (D5): centre -> left -> centre -> right -> centre. Laser stays OFF.");
+    Servo_SetPulse(NULL, c);
+    HAL_Delay(300U);
+    Servo_Glide(c, left, 500U);
+    HAL_Delay(250U);
+    Servo_Glide(left, c, 500U);
+    HAL_Delay(250U);
+    Servo_Glide(c, right, 500U);
+    HAL_Delay(250U);
+    Servo_Glide(right, c, 500U);
+    Laser_SetOutput(&s_laser_pin, 0U);
+    Telemetry_Printf("Servo self-test done (horn should be back at centre).");
+}
+
 static HAL_StatusTypeDef Radar_UartInit(void)
 {
     GPIO_InitTypeDef gpio;
@@ -432,6 +495,13 @@ static HAL_StatusTypeDef Radar_UartInit(void)
         s_radar_uart.Instance = NULL;
         return HAL_ERROR;
     }
+
+    /* 8-byte RX FIFO: at the 4 MHz reset clock a byte arrives every ~156
+     * cycles, so the FIFO absorbs ISR latency (SysTick, EXTI, I2C waits)
+     * instead of overrunning. RXNE now means "FIFO not empty"; the ISR
+     * drains everything available per entry. */
+    (void)HAL_UARTEx_SetRxFifoThreshold(&s_radar_uart, UART_RXFIFO_THRESHOLD_1_8);
+    (void)HAL_UARTEx_EnableFifoMode(&s_radar_uart);
 
     s_rx_head = 0U;
     s_rx_tail = 0U;

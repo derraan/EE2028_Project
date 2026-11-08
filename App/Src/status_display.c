@@ -16,6 +16,11 @@
  * left, then switch to the flashing digits. One banner pass is ~5.1 s
  * (102 columns at STATUS_LAST_SCROLL_MS), so a 10 s window shows it once.
  */
+/* Giant cannon screens */
+#define STATUS_CANNON_HIT_MS       600U   /* thick beam on the giant's column */
+#define STATUS_CANNON_DOWN_MS     1000U   /* burst when the giant is destroyed */
+#define STATUS_CANNON_FLASH_MS      40U
+
 #ifndef STATUS_LIVE_DIGITS_MS
 #define STATUS_LIVE_DIGITS_MS             5000U
 #endif
@@ -291,6 +296,9 @@ static StatusScreen_t ResolveScreen(const StatusDisplay_HandleTypeDef *h)
     if (h->last_active != 0U) {
         return STATUS_SCREEN_LAST_2028;
     }
+    if (h->cannon_active != 0U) {
+        return STATUS_SCREEN_CANNON;
+    }
     if (h->battle_active != 0U) {
         return STATUS_SCREEN_BATTLE_TEXT;
     }
@@ -330,6 +338,9 @@ void StatusDisplay_Init(StatusDisplay_HandleTypeDef *h, HT16K33_HandleTypeDef *d
     h->explosion_active = 0U;
     h->explosion_start_ms = 0U;
     h->terminated = 0U;
+    h->cannon_active = 0U;
+    h->cannon_down = 0U;
+    h->cannon_start_ms = 0U;
     h->scroll_col = 0U;
     h->last_step_ms = 0U;
     h->last_drawn = STATUS_SCREEN_BLANK;
@@ -462,6 +473,39 @@ void StatusDisplay_TriggerExplosion(StatusDisplay_HandleTypeDef *h)
     h->dirty = 1U;
 }
 
+void StatusDisplay_Cannon(StatusDisplay_HandleTypeDef *h, uint8_t down)
+{
+    if (h == NULL) {
+        return;
+    }
+    h->cannon_active = 1U;
+    h->cannon_down = (down != 0U) ? 1U : 0U;
+    h->cannon_start_ms = 0U; /* stamped on the next Update */
+    h->battle_active = 0U;   /* the shot interrupts a BATTLE MODE scroll */
+    h->dirty = 1U;
+}
+
+/* Thick beam: the giant's column plus its neighbours (whole matrix if the
+ * azimuth is unknown). */
+static void Draw_CannonBeam(uint8_t frame[8], uint8_t azimuth)
+{
+    uint8_t c;
+    Frame_Clear(frame);
+    if (azimuth >= 8U) {
+        for (c = 0U; c < 8U; c++) {
+            Draw_Column(frame, c, 0xFFU);
+        }
+        return;
+    }
+    Draw_Column(frame, azimuth, 0xFFU);
+    if (azimuth > 0U) {
+        Draw_Column(frame, (uint8_t)(azimuth - 1U), 0xFFU);
+    }
+    if (azimuth < 7U) {
+        Draw_Column(frame, (uint8_t)(azimuth + 1U), 0xFFU);
+    }
+}
+
 void StatusDisplay_Reset(StatusDisplay_HandleTypeDef *h)
 {
     StatusDisplay_Init(h, (h == NULL) ? NULL : h->dev);
@@ -541,6 +585,17 @@ HAL_StatusTypeDef StatusDisplay_Update(StatusDisplay_HandleTypeDef *h, uint32_t 
         h->explosion_start_ms = 0U;
     }
 
+    if (h->cannon_active != 0U) {
+        uint32_t len = (h->cannon_down != 0U) ? STATUS_CANNON_DOWN_MS : STATUS_CANNON_HIT_MS;
+        if (h->cannon_start_ms == 0U) {
+            h->cannon_start_ms = (now_ms == 0U) ? 1U : now_ms;
+        }
+        if ((now_ms - h->cannon_start_ms) >= len) {
+            h->cannon_active = 0U;
+            h->dirty = 1U;
+        }
+    }
+
     screen = ResolveScreen(h);
     if (screen != h->last_drawn) {
         h->dirty = 1U;
@@ -596,6 +651,26 @@ HAL_StatusTypeDef StatusDisplay_Update(StatusDisplay_HandleTypeDef *h, uint32_t 
                     } else {
                         Frame_Clear(frame);
                     }
+                }
+            }
+            break;
+
+        case STATUS_SCREEN_CANNON:
+            if ((now_ms - h->last_step_ms) >= STATUS_CANNON_FLASH_MS) {
+                draw_now = 1U;
+            }
+            if (draw_now != 0U) {
+                uint8_t i;
+                uint8_t phase = (uint8_t)((now_ms / STATUS_CANNON_FLASH_MS) & 1U);
+                if (h->cannon_down != 0U) {
+                    /* giant destroyed: alternating burst frames */
+                    for (i = 0U; i < 8U; i++) {
+                        frame[i] = kExplosionFrames[phase][i];
+                    }
+                } else if (phase == 0U) {
+                    Draw_CannonBeam(frame, h->azimuth);
+                } else {
+                    Frame_Clear(frame);
                 }
             }
             break;

@@ -30,11 +30,16 @@
 #endif
 /* One-shot drone actions the HUD / buzzer react to (no-op without enhancements). */
 #define EE_EVENT(evt) Enhancements_OnEvent((evt), HAL_GetTick())
+/* Giant cannon available: the radar has a giant locked. */
+#define EE_CANNON_READY() (Enhancements_CannonReady() != 0U)
 #else
 #define EE_EVENT(evt) ((void)0)
+#define EE_CANNON_READY() (0)
 #endif
 
-/* CubeIDE console debug only — mission / VESPER traffic uses Telemetry_*. */
+#define CANNON_CHARGE_COST       10 /* giant cannon needs 10/10 and spends all of it */
+
+/* CubeIDE console debug only (printf) — mission / VESPER traffic uses Telemetry_* over UART. */
 extern void initialise_monitor_handles(void); /* semihosting printf */
 
 /* Define thresholds */
@@ -109,10 +114,18 @@ static void Enhancements_Tick(void);
 
 int main(void)
 {
-	initialise_monitor_handles(); /* for semi-hosting support (printf) */
+	/* Semihosting (CubeIDE console printf) only when a debugger is attached:
+	 * without one the semihosting call faults, so the board could not run from
+	 * plain USB power. Mission telemetry does not need it (UART below). */
+	if ((CoreDebug->DHCSR & CoreDebug_DHCSR_C_DEBUGEN_Msk) != 0U) {
+		initialise_monitor_handles();
+	}
 
 	/* Reset of all peripherals, Initializes the Flash interface and the Systick. */
 	HAL_Init();
+
+	/* Mission telemetry → ST-LINK Virtual COM (USART1 115200 8N1) for Tera Term / VESPER. */
+	Telemetry_UartInit();
 
 	/* Peripheral and Board Initializations using BSP functions */
 	BSP_LED_Init(LED2);
@@ -137,6 +150,9 @@ int main(void)
 		if (Enhancements_HW_SetupRadarAim(&ee_cfg) != 0) {
 			Telemetry_Printf("Radar/laser aim hardware init incomplete - continuing without it.");
 		}
+		/* Bench check: servo sweeps once so D5 wiring is visible without a radar.
+		 * The laser (D7) stays OFF. */
+		Enhancements_HW_ServoSelfTest();
 #endif
 		Enhancements_Init(&ee_cfg);
 	}
@@ -233,7 +249,20 @@ int main(void)
 				if (pb_hold_latched && pb_is_down &&
 					(BSP_PB_GetState(BUTTON_USER) == GPIO_PIN_RESET))
 				{
-					if (laser_charge < 5) {
+					/* Giant cannon: a radar-locked giant + full 10/10 → the hold fires
+					 * the cannon (all 10 charge) instead of the laser gun. */
+					if ((laser_charge >= CANNON_CHARGE_COST) && EE_CANNON_READY()) {
+						if ((HAL_GetTick() - pb_last_fire_tick) >= PB_FIRE_PERIOD_MS) {
+							pb_last_fire_tick = HAL_GetTick();
+							laser_charge -= CANNON_CHARGE_COST;
+							Telemetry_Printf("GIANT CANNON FIRED! KA-BOOM! (Remaining charge: %d/10)", laser_charge);
+							Telemetry_EvtCannon((uint8_t)laser_charge);
+							EE_EVENT(DRONE_EVENT_CANNON_FIRED);
+							Telemetry_Printf("Laser charge too low (%d/10) to fire! Please single-press to recharge the laser gun.", laser_charge);
+							pb_low_charge_warned = true;
+						}
+					}
+					else if (laser_charge < 5) {
 						if (!pb_low_charge_warned) {
 							Telemetry_Printf("Laser charge too low (%d/10) to fire! Please single-press to recharge the laser gun.", laser_charge);
 							pb_low_charge_warned = true;
@@ -470,6 +499,18 @@ void PB_OnSinglePress(void)
 		Telemetry_EvtCharge((uint8_t)laser_charge);
 		EE_EVENT(DRONE_EVENT_LASER_RECHARGED);
 	}
+	else if ((laser_charge < CANNON_CHARGE_COST) && EE_CANNON_READY()) {
+		/* Giant locked: keep charging past 5 so the cannon can reach 10/10
+		 * (baseline rule only recharges below 5; unchanged with no giant). */
+		laser_charge += 3;
+		if (laser_charge > 10) {
+			laser_charge = 10;
+		}
+		Telemetry_Printf("Cannon charging... Current charge: %d/10%s", laser_charge,
+			(laser_charge >= CANNON_CHARGE_COST) ? " - GIANT CANNON READY, hold to fire!" : "");
+		Telemetry_EvtCharge((uint8_t)laser_charge);
+		EE_EVENT(DRONE_EVENT_LASER_RECHARGED);
+	}
 	else {
 		Telemetry_Printf("Laser charge is already sufficient (>=5/10). Hold button >500ms to fire! Or double-press within 500ms to return to standby mode");
 	}
@@ -544,6 +585,23 @@ static void Enhancements_Tick(void)
 	DroneStatus_t st;
 	Fill_DroneStatus(&st);
 	Enhancements_Update(&st, HAL_GetTick());
+
+#if defined(EE_RADAR_AIM) && (EE_RADAR_AIM != 0)
+	/* RD-03D link health every 5 s (bring-up): rx should climb ~300 B/s with
+	 * ok frames ~10/s; bad/drop/err should stay near 0. rx=0 → check wiring. */
+	{
+		static uint32_t radar_link_tick = 0;
+		if ((HAL_GetTick() - radar_link_tick) >= 5000U) {
+			uint32_t rx, dropped, errors, ok, bad;
+			radar_link_tick = HAL_GetTick();
+			Enhancements_HW_RadarStats(&rx, &dropped, &errors);
+			Enhancements_RadarFrameStats(&ok, &bad);
+			Telemetry_Printf("Radar link: rx=%lu B, frames ok=%lu bad=%lu, dropped=%lu, uart_err=%lu",
+				(unsigned long)rx, (unsigned long)ok, (unsigned long)bad,
+				(unsigned long)dropped, (unsigned long)errors);
+		}
+	}
+#endif
 }
 #endif
 

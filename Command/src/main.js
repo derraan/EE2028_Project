@@ -45,6 +45,9 @@ function syncSeen(state) {
     attackSeq: state.attackSeq,
     rescueSeq: state.rescueSeq,
     radarLockSeq: state.radarLockSeq,
+    cannonSeq: state.cannonSeq,
+    giantHitSeq: state.giantHitSeq,
+    giantDownSeq: state.giantDownSeq,
     telemetryAt: state.telemetryAt,
     missionEnded: state.missionEnded,
   };
@@ -61,6 +64,9 @@ function takeEvents(state) {
     attacked: state.attackSeq - seen.attackSeq,
     rescued: state.rescueSeq - seen.rescueSeq,
     radarLocked: state.radarLockSeq - seen.radarLockSeq,
+    cannon: state.cannonSeq - seen.cannonSeq,
+    giantHit: state.giantHitSeq - seen.giantHitSeq,
+    giantDown: state.giantDownSeq - seen.giantDownSeq,
     telemetry: Boolean(state.telemetryAt) && state.telemetryAt !== seen.telemetryAt,
     terminated: state.missionEnded && !seen.missionEnded,
   };
@@ -276,7 +282,14 @@ function frame(now) {
   const stats = world.update(
     dt,
     clock,
-    { mode: state.mode, ended: state.missionEnded, selfDestructing: state.selfDestructing, radar: state.radar, simRadar: source === 'simulation' },
+    {
+      mode: state.mode,
+      ended: state.missionEnded,
+      selfDestructing: state.selfDestructing,
+      radar: state.radar,
+      simRadar: source === 'simulation',
+      giantHits: state.giant.hits,
+    },
     ev
   );
   radar.draw(dt, stats, { alarm: state.mode === 'THE_LAST_OF_2028' || state.selfDestructing, active: !state.missionEnded });

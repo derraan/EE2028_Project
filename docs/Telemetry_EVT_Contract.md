@@ -6,12 +6,12 @@ Unified **mission UART** stream for Tera Term and VESPER. One message per line (
 
 | Path | API | Transport | Audience |
 |------|-----|-----------|----------|
-| **Mission UART** | `Telemetry_WriteLine` / `Telemetry_Printf` / `Telemetry_SendSensors` / `Telemetry_Evt*` | USART → ST-LINK VCP @ **115200 8N1** (strong override) | Tera Term + VESPER |
-| **Debug** | plain `printf` | Semihosting → CubeIDE Console | Developer only |
+| **Mission UART** | `Telemetry_WriteLine` / `Telemetry_Printf` / `Telemetry_SendSensors` / `Telemetry_Evt*` | USART1 (PB6/PB7) → ST-LINK VCP @ **115200 8N1** | Tera Term + VESPER |
+| **Debug** | plain `printf` | Semihosting → CubeIDE Console (only while a debugger is attached) | Developer only |
 
-Until the Cube strong override is linked, the weak `Telemetry_WriteLine` falls back to `printf` so mission lines still appear in CubeIDE. That fallback is temporary — after USART lands, keep `printf` for debug notes only; never send mission/EVT text through raw `printf`.
+On the board, [`App/Src/telemetry_uart.c`](../App/Src/telemetry_uart.c) provides the strong `Telemetry_WriteLine` (blocking `HAL_UART_Transmit`, `<line>\r\n`); `main.c` calls `Telemetry_UartInit()` right after `HAL_Init()`. The weak `printf` fallback in `telemetry_evt.c` is only used by host tests. Never send mission/EVT text through raw `printf`.
 
-Enable USART TX: copy [`App/Src/telemetry_uart_hal.c.example`](../App/Src/telemetry_uart_hal.c.example) into the Cube project, set `EE_TELEMETRY_USART=1`.
+Regression: `node scripts/test_vesper_ingest.mjs` builds the real `telemetry_evt.c` on the host, emits a full mission in `main.c` order, and feeds the exact CRLF byte stream to VESPER's parser in random chunks.
 
 Firmware helpers: [`App/Inc/telemetry_evt.h`](../App/Inc/telemetry_evt.h), [`App/Src/telemetry_evt.c`](../App/Src/telemetry_evt.c).
 
@@ -52,7 +52,11 @@ Threshold violation lines from PR #3 (e.g. `T:40.10 C, exceeds threshold…`) re
 | `EVT RESCUE` | Optional | Pairs with successful rescue prose |
 | `EVT THRESHOLD_OK` | Optional | Clear sticky threshold warning |
 | `EVT RADAR az=… range_mm=… lock=1 pan=… laser=0\|1 n=…` | RD-03D lock, then every 250 ms while locked | Enhancement #5. `az`/`pan` in degrees (one decimal, + = right of boresight). See `docs/Radar_Aim_Design.md` |
-| `EVT RADAR lost` | Locked track dropped (timeout, or leaving Standby/Battle) | Clears the lock in VESPER |
+| `EVT RADAR lost` | Locked track dropped (timeout, leaving Standby/Battle, or after a giant is destroyed) | Clears the lock in VESPER |
+| `EVT CANNON charge=0/10` | Giant cannon fired: Battle + radar lock + 10/10, hold-to-fire (`main.c`) | Charge **after** the shot; separate from `EVT FIRE` (gun) |
+| `EVT GIANT hit=1/2` | First cannon hit on the locked giant (adapter) | Giant HP = 2 |
+| `EVT GIANT down` | Second hit: giant destroyed. Lock is dropped when the beam ends, so the same person re-locks as a new giant | |
+| `EVT GIANT miss` | Cannon fired but the lock was lost first | |
 
 Example stream (plan shape):
 
@@ -86,7 +90,7 @@ Wired from `main.c` today: mission prose via `Telemetry_Printf`, sensors via `Te
 
 Implemented helper but **not** called from live `main.c` yet: `Telemetry_EvtThresholdOk` (parser clears sticky thresholds on the next good sensor line).
 
-Wired from the enhancements adapter when built with `EE_ENHANCEMENTS=1 EE_RADAR_AIM=1`: `EVT RADAR …` / `EVT RADAR lost` (`Radar_Update` in `enhancements.c`).
+Wired from the enhancements adapter when built with `EE_ENHANCEMENTS=1 EE_RADAR_AIM=1`: `EVT RADAR …` / `EVT RADAR lost` (`Radar_Update` in `enhancements.c`), `EVT GIANT …` (`Cannon_OnFired`). `EVT CANNON` comes from `main.c`, which owns the charge.
 
 Harness / optional only (not live adapter): `EVT IR=…`, `EVT CAP_EXPLODE=…`, `EVT THREAT=…`. Live IR is prose + chirp; live relay is GPIO via `Enhancements_OnEvent(DRONE_EVENT_SELF_DESTRUCT_STARTED, …)`.
 

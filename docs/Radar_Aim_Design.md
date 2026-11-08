@@ -1,6 +1,8 @@
 # Radar zombie detection + laser aim (enhancement #5)
 
-An Ai-Thinker **RD-03D** 24 GHz mmWave radar detects people ("zombies" in the VESPER story) and localises them in **azimuth**. A single **pan servo** turns a low-power **laser pointer** onto the nearest one's body. In Battle the pointer lights once it is on target, and each accepted shot (`EVT FIRE`) strobes it.
+An Ai-Thinker **RD-03D** 24 GHz mmWave radar detects people ("zombies" in the VESPER story) and localises them in **azimuth**. A single **pan servo** turns a low-power **laser pointer** onto the nearest one's body.
+
+**Giant cannon (current behaviour):** the locked person is a *giant* and the laser is the *giant cannon*. The servo tracks the lock in Standby and Battle, but the laser stays **off** until a cannon shot (Battle + lock + 10/10 hold-to-fire). It then lights steadily for `EE_CANNON_BEAM_MS` (1 s) while aimed. Gun shots (`EVT FIRE`) no longer strobe it. The adapter implements this by opening `allow_laser` only during the beam window; `laser_aim.c` is unchanged. Giant HP, `EVT GIANT` and the recharge rule: `docs/Assignment2_Enhancements.md` §5a.
 
 The radar is **detection + aiming only**. It never changes the drone mode, adds or spends charge, or fires. Hold-to-fire, the +3 charge rule, rescue, and the 10 s / 5-rescue self-destruct all stay in `Core/Src/main.c`. This is the same authority rule IR follows.
 
@@ -103,7 +105,7 @@ The firmware emits a line on lock, then every 250 ms while locked (`EE_RADAR_EVT
 ## Bring-up checklist
 
 1. **Laser off at boot**: check D7 LOW, both with and without the radar connected.
-2. **Frames**: `Enhancements_HW_RadarStats()` shows `rx` climbing at about 300 B/s and `errors` near 0.
+2. **Frames**: the Enhanced build prints `Radar link: rx=… B, frames ok=… bad=…, dropped=…, uart_err=…` every 5 s on the telemetry COM port (VESPER log / Tera Term). Healthy: `rx` grows ~1500 B and `ok` ~50 per line, `bad`/`dropped`/`uart_err` stay near 0. `rx=0` → radar TX not reaching D0 (wiring, 5 V power, GND). `rx` grows but `ok=0` → wrong module or baud (an RD-03E sends `AA AA …` frames). UART4 runs with its 8-byte RX FIFO enabled, and the multi-target command is resent at +1 s and +3 s in case the radar was still booting.
 3. **Sign**: stand 2 m ahead and step right. `EVT RADAR az` should be > 0. Otherwise set `EE_RADAR_MIRROR_X=-1`.
 4. **Servo direction and trim**: with no target, adjust `EE_SERVO_CENTER_US` until the laser points along radar boresight. Flip `EE_SERVO_DIRECTION` if it tracks the wrong way.
 5. **Parallax**: measure the laser offset, then check at 1 m and 4 m that the dot stays on the chest.

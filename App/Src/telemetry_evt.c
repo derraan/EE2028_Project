@@ -13,11 +13,8 @@
 #endif
 
 /**
- * Default transport: printf (semihosting) so CubeIDE still shows mission lines
- * before USART is wired. Provide a strong Telemetry_WriteLine (HAL_UART_Transmit
- * to ST-LINK VCP @ 115200 8N1) from the Cube project — see
- * App/Src/telemetry_uart_hal.c.example. After that override links, keep using
- * plain printf only for debug notes that must not reach VESPER.
+ * Fallback transport (printf) for host tests. On the board the strong
+ * Telemetry_WriteLine in telemetry_uart.c sends lines to the ST-LINK COM port.
  */
 __attribute__((weak)) void Telemetry_WriteLine(const char *line)
 {
@@ -168,4 +165,31 @@ void Telemetry_EvtRadar(int16_t az_ddeg, uint16_t range_mm, uint8_t locked,
 void Telemetry_EvtRadarLost(void)
 {
 	Telemetry_WriteLine("EVT RADAR lost");
+}
+
+void Telemetry_EvtCannon(uint8_t charge_after_shot)
+{
+	char buf[64];
+	if (charge_after_shot > 10U) {
+		charge_after_shot = 10U;
+	}
+	(void)snprintf(buf, sizeof(buf), "EVT CANNON charge=%u/10", (unsigned)charge_after_shot);
+	Telemetry_WriteLine(buf);
+}
+
+void Telemetry_EvtGiantHit(uint8_t hits, uint8_t hp)
+{
+	char buf[48];
+	(void)snprintf(buf, sizeof(buf), "EVT GIANT hit=%u/%u", (unsigned)hits, (unsigned)hp);
+	Telemetry_WriteLine(buf);
+}
+
+void Telemetry_EvtGiantDown(void)
+{
+	Telemetry_WriteLine("EVT GIANT down");
+}
+
+void Telemetry_EvtGiantMiss(void)
+{
+	Telemetry_WriteLine("EVT GIANT miss");
 }

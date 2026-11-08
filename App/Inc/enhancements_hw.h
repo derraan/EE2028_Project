@@ -2,7 +2,8 @@
  * @file enhancements_hw.h
  * @brief Board backends for matrix / buzzer / IR / relay (Cube pin aliases).
  *
- * Board of record B-L4S5I-IOT01A Arduino pins (lab Cube main.h / .ioc):
+ * Board of record B-L4S5I-IOT01A Arduino pins (lab Cube main.h / .ioc).
+ * Full pinout + power rules: docs/Hardware_Pinout.md (update it with any pin change).
  *   Matrix HT16K33  — I2C1 Arduino D15/D14 (PB8 SCL / PB9 SDA), addr 0x70,
  *                     brought up by Enhancements_HW_MatrixI2C()
  *   Buzzer          — D2  (ARD_D2 / PD14)
@@ -41,6 +42,13 @@ int Enhancements_HW_Setup(Enhancements_Config_t *cfg, I2C_HandleTypeDef *hi2c);
  * Returns 0 on success; non-zero bit mask of failed parts (1 UART, 2 TIM).
  */
 int Enhancements_HW_SetupRadarAim(Enhancements_Config_t *cfg);
+
+/**
+ * Boot bench check for the pan servo on D5 (no radar needed): blocking ~3.5 s
+ * sweep centre → left → centre → right → centre (±45°). The laser is held OFF
+ * throughout. Call after Enhancements_HW_SetupRadarAim, before Enhancements_Init.
+ */
+void Enhancements_HW_ServoSelfTest(void);
 
 /** UART4 RX interrupt body — call it yourself if EE_RADAR_OWN_IRQ=0. */
 void Enhancements_HW_RadarIrq(void);

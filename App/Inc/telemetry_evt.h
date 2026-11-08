@@ -27,9 +27,15 @@ extern "C" {
 #define EVT_REASON_EARLY         "early"
 
 /**
- * Low-level line writer (appends \\r\\n). Default weak impl uses printf
- * (semihosting) so mission lines still appear in CubeIDE until a strong
- * USART override is linked — see App/Src/telemetry_uart_hal.c.example.
+ * Start USART1 (ST-LINK Virtual COM, PB6/PB7) at 115200 8N1 for telemetry.
+ * Call once right after HAL_Init(). Implemented in telemetry_uart.c.
+ */
+void Telemetry_UartInit(void);
+
+/**
+ * Low-level line writer (appends \\r\\n). On the board, telemetry_uart.c sends
+ * it to the ST-LINK COM port. The weak default in telemetry_evt.c (printf) is
+ * only used by host tests that do not link telemetry_uart.c.
  */
 void Telemetry_WriteLine(const char *line);
 
@@ -63,6 +69,18 @@ void Telemetry_EvtAttack(void);                          /* optional; pairs with
 void Telemetry_EvtRadar(int16_t az_ddeg, uint16_t range_mm, uint8_t locked,
                         int16_t pan_ddeg, uint8_t laser_on, uint8_t contacts);
 void Telemetry_EvtRadarLost(void);                       /* EVT RADAR lost */
+
+/**
+ * Giant cannon (radar-locked giant, needs 10/10, uses all 10).
+ *   EVT CANNON charge=0/10      — main.c, the shot itself (charge AFTER)
+ *   EVT GIANT hit=1/2           — adapter, first hit on the locked giant
+ *   EVT GIANT down              — adapter, second hit: giant destroyed
+ *   EVT GIANT miss              — adapter, lock was lost before the shot landed
+ */
+void Telemetry_EvtCannon(uint8_t charge_after_shot);
+void Telemetry_EvtGiantHit(uint8_t hits, uint8_t hp);
+void Telemetry_EvtGiantDown(void);
+void Telemetry_EvtGiantMiss(void);
 
 #ifdef __cplusplus
 }

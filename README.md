@@ -68,6 +68,12 @@ Do not “fix” these from older checklist wording without a focused patch:
 | Buzzer | D2 = PD14 | Battle entry, recharge / denied, fire, threat chirp, accelerating countdown, rescue OK / fail, final burst |
 | IR sensor | D3 = PB0 (active-LOW) | Detect → log + chirp |
 | Relay `CAP_EXPLODE` | D4 = PA3 | HIGH on self-destruct start (safe sim load only) |
+| RD-03D radar | D0 = PA1 (RX) / D1 = PA0 (TX), UART4 256000 | Giant lock → matrix, servo, `EVT RADAR` |
+| Pan servo | D5 = PB4, TIM3_CH1 50 Hz | Tracks the lock; one self-test sweep at boot |
+| Laser (giant cannon) | D7 = PA4, via transistor | Lit only for a 1 s cannon beam |
+| Telemetry | ST-LINK VCP (USART1 PB6/PB7, 115200) | Tera Term / VESPER |
+
+Full pinout incl. on-board LED / button / sensors, power rules and safe boot states: [docs/Hardware_Pinout.md](docs/Hardware_Pinout.md).
 
 The shared adapter (`enhancements.c` / `enhancements_hw.c`) watches a `DroneStatus_t` snapshot each tick and handles two one-shot events: laser fired, self-destruct started. Live mode uses **one** 10 s rescue clock for matrix and buzzer.
 
@@ -106,7 +112,7 @@ More UI detail: [Command/README.md](Command/README.md).
 1. In STM32CubeIDE, create or open a **B-L4S5I-IOT01A** project; keep the `.ioc` in (or next to) this repo.
 2. Add `App/Inc` + `App/Src` (and `Core/` app files) to include paths and the build.
 3. Confirm USER button EXTI on **both edges**, USART1 @ **115200 8N1** (ST-LINK VCP), I2C2 for on-board sensors.
-4. Enable USART1 @ 115200 (`telemetry_uart_hal.c.example` + `EE_TELEMETRY_USART=1`). Mission traffic is already on `Telemetry_*`; keep CubeIDE `printf` for debug only.
+4. Mission telemetry goes to the ST-LINK Virtual COM port (USART1 @ 115200 8N1) via `App/Src/telemetry_uart.c` — connect VESPER (Chrome/Edge **Connect board**) or Tera Term to that COM port. CubeIDE `printf` is for debug only.
 5. Build, flash, prove LED + button + one telemetry line before enabling extras.
 
 Full checklist: [docs/Next_Steps.md](docs/Next_Steps.md).

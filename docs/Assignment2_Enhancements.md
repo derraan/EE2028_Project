@@ -88,6 +88,18 @@ The GPIO drives the relay module's control input, not a relay coil directly. The
 | **Effort** | High (driver + coordinate mapping + mechanical mount) |
 | **Safety** | Low-power laser / LED only; lab eye-safety rules; no high-energy beam |
 
+#### 5a. Giants + giant cannon (game dynamic on top of #5)
+
+| | |
+|--|--|
+| **Story** | The RD-03D detects **giants**: every radar-locked person is a giant 10–20× the size of a zombie. The physical red laser pointer is the drone's **giant cannon**, far bigger than the laser gun |
+| **Fire rule** | Battle + giant locked + charge **10/10** → hold-to-fire fires the **cannon** (spends all 10, `EVT CANNON`) instead of the gun. Otherwise hold-to-fire is the normal gun (−5, `EVT FIRE`), which only kills zombies |
+| **Recharge** | With a giant locked, single press keeps adding +3 past 5 up to 10/10 ("Cannon charging…"). With no giant the baseline rule (only below 5) is unchanged |
+| **Giant HP** | 2 cannon hits (firmware counts on the current lock): `EVT GIANT hit=1/2`, then `EVT GIANT down`. Lock lost → next giant starts at full HP |
+| **Physical laser** | Off normally; lights for a **1 s beam** per cannon shot on the locked giant (servo aimed). No aim dot, and gun shots never light it |
+| **Feedback** | Buzzer: charge-up + blast (hit) or blast + fanfare (down). Matrix: thick flashing beam on the giant's column (hit) or a burst (down). VESPER: giant rises at the lock, thick red beam, stagger / topple, Giants counter |
+| **Scope** | Enhanced build only (`EE_ENHANCEMENTS=1`). The Debug baseline keeps the assignment rules exactly |
+
 ### 6. Wi‑Fi / BLE telemetry
 | | |
 |--|--|
@@ -150,6 +162,8 @@ The GPIO drives the relay module's control input, not a relay coil directly. The
 
 ## Discovery kit map (basics + hooks)
 
+Pin-level detail for everything below: [`docs/Hardware_Pinout.md`](Hardware_Pinout.md).
+
 Board of record: **B-L4S5I-IOT01A** (PR #3 BSP `B-L4S5I-IOT01` / `stm32l4s5i_iot01*`).
 
 | Variable / feature | Hardware |
@@ -162,7 +176,7 @@ Board of record: **B-L4S5I-IOT01A** (PR #3 BSP `B-L4S5I-IOT01` / `stm32l4s5i_iot
 | UART Command Center (#4) | ST-LINK Virtual COM |
 | Wi‑Fi / BLE (#6) | On-kit radio modules |
 | HUD / IR / buzzer (#1–#3) | **Owned Grove trio** |
-| mmWave + 2‑DOF aim (#5) | External radar + 2 servos + laser/LED |
+| mmWave aim + giant cannon (#5) | RD-03D on D0/D1 + 1 pan servo (D5) + laser (D7) |
 | UAV (#7) | FC + airframe **or** companion link to Discovery |
 
 ---

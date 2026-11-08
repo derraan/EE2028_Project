@@ -102,6 +102,32 @@ static const BuzzerStep_t kRescueFail[] = {
     {0U, 0U,   0U}
 };
 
+/* Giant cannon: charge-up (gaps shrink) into a long blast */
+static const BuzzerStep_t kCannon[] = {
+    {1U, 0U,  20U},
+    {0U, 0U,  60U},
+    {1U, 0U,  20U},
+    {0U, 0U,  40U},
+    {1U, 0U,  20U},
+    {0U, 0U,  25U},
+    {1U, 0U,  20U},
+    {0U, 0U,  15U},
+    {1U, 0U, 600U},
+    {0U, 0U,   0U}
+};
+
+/* Giant destroyed: the blast, then a short victory fanfare */
+static const BuzzerStep_t kGiantDown[] = {
+    {1U, 0U, 600U},
+    {0U, 0U, 150U},
+    {1U, 0U,  90U},
+    {0U, 0U,  70U},
+    {1U, 0U,  90U},
+    {0U, 0U,  70U},
+    {1U, 0U, 450U},
+    {0U, 0U,   0U}
+};
+
 #define BUZZER_STEPS(tbl) (tbl), (uint8_t)(sizeof(tbl) / sizeof((tbl)[0]))
 
 static const BuzzerPatternDef_t kPatternDefs[BUZZER_PATTERN_COUNT] = {
@@ -115,7 +141,9 @@ static const BuzzerPatternDef_t kPatternDefs[BUZZER_PATTERN_COUNT] = {
     {BUZZER_STEPS(kRecharge),    0U},         /* RECHARGE */
     {BUZZER_STEPS(kDenied),      0U},         /* DENIED */
     {BUZZER_STEPS(kRescueOk),    0U},         /* RESCUE_OK */
-    {BUZZER_STEPS(kRescueFail),  0U}          /* RESCUE_FAIL */
+    {BUZZER_STEPS(kRescueFail),  0U},         /* RESCUE_FAIL */
+    {BUZZER_STEPS(kCannon),      0U},         /* CANNON */
+    {BUZZER_STEPS(kGiantDown),   0U}          /* GIANT_DOWN */
 };
 
 /*
@@ -134,6 +162,8 @@ static uint8_t Buzzer_PatternPriority(BuzzerPattern_t pattern)
             return 2U;
         case BUZZER_PATTERN_BATTLE_ENTRY:
         case BUZZER_PATTERN_LAST_WARNING:
+        case BUZZER_PATTERN_CANNON:
+        case BUZZER_PATTERN_GIANT_DOWN:
             return 3U;
         case BUZZER_PATTERN_COUNTDOWN:
             return 4U;
@@ -386,6 +416,8 @@ void Buzzer_Update(Buzzer_HandleTypeDef *h, uint32_t now_ms)
         case BUZZER_PATTERN_DENIED:
         case BUZZER_PATTERN_RESCUE_OK:
         case BUZZER_PATTERN_RESCUE_FAIL:
+        case BUZZER_PATTERN_CANNON:
+        case BUZZER_PATTERN_GIANT_DOWN:
             Buzzer_UpdateTablePattern(h, now_ms, h->active_pattern);
             break;
         case BUZZER_PATTERN_COUNT:

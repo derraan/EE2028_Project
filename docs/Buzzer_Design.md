@@ -150,6 +150,8 @@ New cue rhythms (active buzzer):
 | Denied | `ON 15` / `OFF 15` ×5 (rough "brrr") |
 | Rescue OK | `ON 70` / `OFF 60` ×2 → `ON 400` |
 | Rescue fail | `ON 300` |
+| Cannon (giant hit / miss) | `ON 20` with gaps 60 → 40 → 25 → 15, then `ON 600` |
+| Giant down | `ON 600` → `OFF 150` → `ON 90` / `OFF 70` ×2 → `ON 450` |
 
 Priority (higher wins; `Buzzer_PatternPriority`): recharge = threat chirp 1 < laser fire = denied 2 < battle entry = LAST warning 3 < countdown 4 < rescue fail 5 < rescue OK 6 < final burst 7. Rescue fail outranks the countdown so it is heard over it.
 
