@@ -89,8 +89,9 @@ extern void initialise_monitor_handles(void); /* semihosting printf */
 #define LASER_CHARGE_STEP   3
 #define LASER_FIRE_MIN     25
 #define LASER_SHOT_COST     5
-/* Giant cannon needs a full charge and spends all of it. */
-#define CANNON_CHARGE_COST LASER_CHARGE_MAX
+/* Giant cannon: each shot costs 10 charge and needs at least 10. A giant takes
+ * 2 hits, so killing one costs 2 x 10 = 20 charge. */
+#define CANNON_CHARGE_COST 10
 
 _Static_assert(LASER_CHARGE_MAX <= 255, "charge is cast to uint8_t for telemetry");
 _Static_assert(LASER_FIRE_MIN >= LASER_SHOT_COST, "a shot must never take charge below 0");
@@ -470,8 +471,8 @@ int main(void)
                 if (pb_hold_latched && pb_is_down &&
                     (BSP_PB_GetState(BUTTON_USER) == GPIO_PIN_RESET))
                 {
-                    /* Giant cannon: a radar-locked giant + full charge → the hold fires
-                     * the cannon (all of the charge) instead of the laser gun. */
+                    /* Giant cannon: a radar-locked giant + at least 10 charge → the hold fires
+                     * the cannon (-10 per shot) instead of the laser gun. */
                     if ((laser_charge >= CANNON_CHARGE_COST) && EE_CANNON_READY()) {
                         if ((HAL_GetTick() - pb_last_fire_tick) >= PB_FIRE_PERIOD_MS) {
                             pb_last_fire_tick = HAL_GetTick();
@@ -480,7 +481,7 @@ int main(void)
                                              laser_charge, LASER_CHARGE_MAX);
                             Telemetry_EvtCannon((uint8_t)laser_charge);
                             EE_EVENT(DRONE_EVENT_CANNON_FIRED);
-                            pb_low_charge_warned = true; /* spent on purpose: no "too low" nag */
+                            pb_low_charge_warned = true; /* cannon shots do not trigger the gun's "too low" nag */
                         }
                     }
                     else if (laser_charge < LASER_FIRE_MIN) {

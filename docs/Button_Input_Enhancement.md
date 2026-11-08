@@ -44,7 +44,7 @@ The ISR does **not** assume which edge fired; the main loop **reads GPIO level**
 | `PB_DOUBLE_PRESS_MS` | 500 ms | Max gap between two **short-click completions** to count as a double |
 | `PB_FIRE_PERIOD_MS` | 500 ms | Full-auto shot spacing while held in Battle |
 
-All intervals use `HAL_GetTick()` (SysTick). There is one MCU time base; multiple **software windows** ride on it.
+All intervals use `HAL_GetTick()` (SysTick). There is one MCU time base; multiple **software windows** ride on it. See [Timing_and_Interrupts.md](Timing_and_Interrupts.md) for the non-blocking tick pattern and the full interrupt inventory.
 
 ---
 
@@ -136,13 +136,13 @@ The drone has no on-screen menu UI in this basic build; **mode + laser + rescue 
                  double short
   STANDBY_MODE ───────────────► BATTLE_MODE
        ▲                             │
-       │         double short        │ hold ≥500 ms
+       │  double short (50/50 only)  │ hold ≥500 ms
        └─────────────────────────────┤   └─► full-auto fire (−5 / 500 ms)
-                                     │       while GPIO low & charge ≥5
+                                     │       while GPIO low & charge ≥25/50
                                      │
-                                     │ short single (deferred)
-                                     │   charge <5  → +3 recharge
-                                     │   charge ≥5  → hint only
+                                     │ short press
+                                     │   charge <50 → +3 recharge at once
+                                     │   charge =50 → deferred single (ignored)
                                      │
         accel upside-down (not PB)   ▼
                              THE_LAST_OF_2028
@@ -165,7 +165,7 @@ The drone has no on-screen menu UI in this basic build; **mode + laser + rescue 
 | Mode | Short single | Double short | Hold (≥500 ms) |
 |------|--------------|--------------|----------------|
 | **STANDBY_MODE** | Ignored | → `BATTLE_MODE` | Ignored (no fire) |
-| **BATTLE_MODE** | Recharge +3 if charge &lt; 5/10; else print hold/double hint | → `STANDBY_MODE` | Full-auto laser while held |
+| **BATTLE_MODE** | Recharge +3 at once while charge &lt; 50/50 (no double-press wait); at 50/50 ignored | → `STANDBY_MODE` only when charge is 50/50 | Full-auto laser while held |
 | **THE_LAST_OF_2028** | Ignored | Rescue attempt / rescue / explode path | Ignored for laser |
 | **SELF_DESTRUCT_*** | Ignored | Ignored | Ignored |
 
@@ -173,8 +173,8 @@ The drone has no on-screen menu UI in this basic build; **mode + laser + rescue 
 
 While `pb_hold_latched &&` GPIO still pressed and mode is Battle:
 
-- Charge ≥ 5/10 → consume 5/10 every `PB_FIRE_PERIOD_MS` (non-blocking).
-- Charge &lt; 5/10 → warn once to single-press recharge.
+- Charge ≥ 25/50 → consume 5 every `PB_FIRE_PERIOD_MS` (non-blocking). With a radar-locked giant and charge ≥ 10, the hold fires the giant cannon (−10 per shot; 2 shots kill the giant) instead.
+- Charge &lt; 25/50 → warn once to single-press recharge.
 - Release (GPIO high) → stop firing; no accidental “single” or “double” from that release.
 
 ---

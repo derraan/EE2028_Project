@@ -187,10 +187,10 @@ Only one program can hold the COM port: close Tera Term before connecting VESPER
 | Action | Matrix | Buzzer |
 |---|---|---|
 | Power-up (Enhanced) | — (servo on D5 sweeps centre → left → centre → right → centre, ~3.5 s; laser stays OFF; telemetry prints `Servo self-test …`) | Silent |
-| Boot (Standby) | Steady charge bar (full at 10/10) | Silent |
+| Boot (Standby) | Steady charge bar (full at 50/50; the matrix bar is 0–10 scaled) | Silent |
 | Double press → Battle | `BATTLE MODE` scrolls once | Three rising beeps |
-| In Battle, charge ≥ 5 | Charge bar **blinks** | — |
-| Hold button with charge < 5 | — | Rough "brrr" (refused) |
+| In Battle, charge ≥ 25/50 | Charge bar **blinks** | — |
+| Hold button with charge < 25/50 | — | Rough "brrr" (refused) |
 | Single press (recharge +3) | Bar grows | Short blip |
 | Hold to fire | Bar shrinks by 5 | "Pew" per shot |
 | Flip upside down | `THE LAST OF EE2028` scrolls, then digits 5…0 flash | Beeps that speed up |

@@ -74,8 +74,8 @@ void Telemetry_EvtRadar(int16_t az_ddeg, uint16_t range_mm, uint8_t locked,
 void Telemetry_EvtRadarLost(void);                       /* EVT RADAR lost */
 
 /**
- * Giant cannon (radar-locked giant, needs 50/50, uses all 50).
- *   EVT CANNON charge=0/50      — main.c, the shot itself (charge AFTER)
+ * Giant cannon (radar-locked giant, needs at least 10 charge, spends 10 per shot; 2 hits kill a giant).
+ *   EVT CANNON charge=n/50      — main.c, the shot itself (charge AFTER)
  *   EVT GIANT hit=1/2           — adapter, first hit on the locked giant
  *   EVT GIANT down              — adapter, second hit: giant destroyed
  *   EVT GIANT miss              — adapter, lock was lost before the shot landed

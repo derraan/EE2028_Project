@@ -46,7 +46,7 @@ No wiring needed: these are on the board. Connect one USB cable to the **ST-LINK
 | **D3** | PB0 | GPIO in, pull-up | in | Grove IR reflective | — | Active-LOW: detect → log + chirp (no mode change) |
 | **D4** | PA3 | GPIO out | out | Relay module **IN** (`CAP_EXPLODE`) | **LOW** | **HIGH** once at self-destruct, latched until reset (`docs/Relay_Design.md`) |
 | **D5** | PB4 | TIM3_CH1 (AF2) | out | Pan servo **signal** | 1500 µs, then self-test sweep | 50 Hz, 1 µs steps. Tracks the radar lock |
-| **D7** | PA4 | GPIO out, pull-down | out | Laser module via transistor | **LOW (off)** | Lit only for a 1 s **giant-cannon** beam (Battle + lock + 10/10 shot) |
+| **D7** | PA4 | GPIO out, pull-down | out | Laser module via transistor | **LOW (off)** | Lit only for a 1 s **giant-cannon** beam (Battle + lock + cannon shot (≥10 charge)) |
 | **D14** | PB9 | I2C1_SDA (AF4, open-drain) | i/o | Grove LED matrix **SDA** | — | ~100 kHz, address 0x70 |
 | **D15** | PB8 | I2C1_SCL (AF4, open-drain) | out | Grove LED matrix **SCL** | — | |
 

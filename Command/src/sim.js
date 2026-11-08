@@ -17,7 +17,7 @@
  *    double press returns to Standby (refused unless fully charged).
  *    Hold fires every 500 ms, −5 per shot, needs ≥25/50.
  *  - Giant cannon (enhanced build): while the radar has a giant locked and
- *    charge is 50/50, the hold fires the cannon instead (−50, EVT CANNON);
+ *    charge is at least 10, the hold fires the cannon instead (−10 per shot, EVT CANNON);
  *    the radar mirror counts giant hits (EVT GIANT hit=1/2 → down).
  *  - Upside-down (accel z < −4) in Standby/Battle → THE_LAST_OF_2028.
  *  - THE_LAST_OF_2028: ATTACK + COUNTDOWN every 1 s; upright double-press
@@ -43,7 +43,7 @@ export const SIM = Object.freeze({
   CHARGE_STEP: 3, // LASER_CHARGE_STEP
   FIRE_MIN: 25, // LASER_FIRE_MIN
   SHOT_COST: 5, // LASER_SHOT_COST
-  CANNON_COST: 50, // CANNON_CHARGE_COST in main.c (= LASER_CHARGE_MAX)
+  CANNON_COST: 10, // CANNON_CHARGE_COST in main.c: cost per shot and the minimum to fire
 });
 
 const STANDBY = 'STANDBY_MODE';
@@ -234,7 +234,7 @@ export function createVirtualBoard(emit) {
         }
         if (s.holdLatched && s.down) {
           if (s.charge >= SIM.CANNON_COST && radar.cannonReady()) {
-            // Giant cannon: a radar-locked giant + full charge → the hold fires the cannon.
+            // Giant cannon: a radar-locked giant + at least 10 charge → the hold fires the cannon.
             if (now - s.lastFireAt >= SIM.FIRE_PERIOD_MS) {
               s.lastFireAt = now;
               s.charge -= SIM.CANNON_COST;

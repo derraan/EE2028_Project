@@ -182,7 +182,7 @@ Useful ids / regions already in the mockup:
 | `#clock` | UTC clock | Host clock or mission uptime |
 | `#mode` | “Manual standby” | `STANDBY` / `BATTLE` / `THE_LAST_OF_2028` |
 | `#flightState` | HUD flight state text | Same mode (or countdown overlay) |
-| ENERGY CORE `%` + `.bar i` | Fake 87% quantum cell | Laser charge `n/10` + bar width |
+| ENERGY CORE `%` + `.bar i` | Fake 87% quantum cell | Laser charge `n/50` + bar width |
 | `#temp` | Core temperature | Sensor `T` (°C) |
 | `#devices` | LIDAR / bio / optics cards | Rebuild for `P H A G M` (and optionally keep `T` here) |
 | `#diagnostics` | Diagnostic prose | Threshold summary |
@@ -205,7 +205,7 @@ Add attributes **without** discarding VESPER styling. Prefer hooks on existing n
 <h2 id="mode" data-cc-mode>STANDBY</h2>
 <div id="flightState" data-cc-flight-state>STANDBY</div>
 
-<strong data-cc-charge>0/10</strong>
+<strong data-cc-charge>0/50</strong>
 <i data-cc-charge-bar style="width:0%"></i>
 <span data-cc-armed>NO</span>
 
@@ -228,7 +228,7 @@ Add attributes **without** discarding VESPER styling. Prefer hooks on existing n
 | `data-cc-link` | Bridge connection state |
 | `data-cc-uptime` | Host timer |
 | `data-cc-mode` / `data-cc-flight-state` | Mode enter lines / `EVT MODE=` |
-| `data-cc-charge` / `data-cc-charge-bar` / `data-cc-armed` | `EVT CHARGE=` / fire rules (≥5/10 armed) |
+| `data-cc-charge` / `data-cc-charge-bar` / `data-cc-armed` | `EVT CHARGE=` / fire rules (≥25/50 armed) |
 | `data-cc-t` … sensors | Mandatory 1 Hz telemetry |
 | `data-cc-thresholds` | Threshold violation lines or ALL OK |
 | `data-cc-event-log` | Mode + `EVT` history (newest first) |
@@ -271,8 +271,8 @@ Canonical contract: [`Telemetry_EVT_Contract.md`](Telemetry_EVT_Contract.md). Im
 ```text
 EVT MODE=STANDBY_MODE | BATTLE_MODE | THE_LAST_OF_2028
 EVT ATTACK
-EVT CHARGE=6/10
-EVT FIRE charge=1/10
+EVT CHARGE=30/50
+EVT FIRE charge=25/50
 EVT IR=1
 EVT RADAR az=3
 EVT COUNTDOWN remaining_ms=9000
@@ -328,7 +328,7 @@ Suggested browser state object:
   uptimeMs: 0,
   telemetry: { T, P, H, A, G, M, units: {...} },
   thresholds: { ok: true, lines: [] },
-  charge: 0,          // 0..10
+  charge: 0,          // 0..50
   armed: false,
   ir: false,
   radarAz: null,      // 0..7 or degrees

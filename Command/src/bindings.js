@@ -153,16 +153,16 @@ export function bindHud(state, world) {
   setText('kills', String(world.kills));
   setText('wave', String(world.wave));
   // RD-03D lock is firmware-reported (EVT RADAR); the lock is a GIANT. HP and
-  // cannon readiness are firmware too (EVT GIANT, charge 50/50 in Battle).
+  // cannon readiness are firmware too (EVT GIANT, charge ≥ 10 in Battle).
   const rd = state.radar;
   const hp = state.giant?.hp ?? 2;
   const hpLeft = Math.max(0, hp - (state.giant?.hits ?? 0));
-  const cannonReady = state.mode === 'BATTLE_MODE' && state.charge >= 50;
+  const cannonReady = state.mode === 'BATTLE_MODE' && state.charge >= 10;
   const radarLine =
     rd && rd.lock && rd.az != null
       ? `GIANT ${'█'.repeat(hpLeft)}${'░'.repeat(hp - hpLeft)} ${rd.az > 0 ? '+' : ''}${rd.az.toFixed(1)}° · ${
           rd.rangeMm != null ? (rd.rangeMm / 1000).toFixed(1) : '?'
-        } m · ${rd.laser ? 'CANNON FIRING' : cannonReady ? 'CANNON READY · HOLD TO FIRE' : state.mode === 'BATTLE_MODE' ? 'CANNON NEEDS 50/50' : 'TRACKING'}`
+        } m · ${rd.laser ? 'CANNON FIRING' : cannonReady ? 'CANNON READY · HOLD TO FIRE' : state.mode === 'BATTLE_MODE' ? 'CANNON NEEDS 10 CHARGE' : 'TRACKING'}`
       : null;
   setText(
     'nearest',

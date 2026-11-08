@@ -26,9 +26,9 @@ Everything in the assignment's basic specification is a **minimum requirement**.
 - [ ] Standby LED remains continuously ON.
 - [ ] Entering Battle sends `Entering BATTLE MODE` immediately and once.
 - [ ] Battle LED blinks at 1 Hz.
-- [ ] Battle single press adds exactly 3/10 charge, with charge represented precisely enough to avoid float-comparison errors.
-- [ ] At charge ≥5/10, hold PB >500 ms to fire (full-auto while held; −5 charge per shot every 500 ms).
-- [ ] At charge <5/10, the laser stays inactive (hold reminds to recharge; single press adds +3).
+- [ ] Battle single press adds exactly +3 charge on the 0–50 scale (integer, no float comparisons); it acts at once while charge < 50.
+- [ ] At charge ≥25/50, hold PB >500 ms to fire (full-auto while held; −5 charge per shot every 500 ms).
+- [ ] At charge <25/50, the laser stays inactive (hold reminds to recharge; single press adds +3).
 - [ ] Battle double press returns to Standby when THE_LAST_OF_2028 is not active.
 - [ ] Upside-down detection enters THE_LAST_OF_2028.
 - [ ] THE_LAST_OF_2028 LED blinks at 2 Hz.
@@ -65,7 +65,7 @@ Application source for the mandatory baseline, enhancements adapter, telemetry E
 
 Frozen gameplay (do not “fix” from older assignment wording without a focused patch):
 
-- Battle fire is **hold-to-fire** (≥500 ms, charge ≥5/10), not auto-fire on charge alone.
+- Battle fire is **hold-to-fire** (≥500 ms, charge ≥25/50), not auto-fire on charge alone.
 - Standby → Battle on **double-press or T/A/G** threshold trip (PR #3).
 - Self-destruct at **10 s** without rescue **or** **5** failed upside-down rescues.
 - IR is observe-only (chirp + log); no mode/fire authority.
@@ -172,7 +172,7 @@ Tasks:
 
 ## Phase 4 — Replace blocking skeleton behavior
 
-The current `HAL_Delay(100)` and unimplemented comments are insufficient for simultaneous display, telemetry, buttons, countdown and radar.
+The original skeleton's `HAL_Delay(100)` loop was insufficient for simultaneous display, telemetry, buttons, countdown and radar. It has been replaced by a tick-driven super-loop: see [Timing_and_Interrupts.md](Timing_and_Interrupts.md).
 
 - [ ] Replace the fixed-delay loop with cooperative tasks driven by `HAL_GetTick()`.
 - [ ] Use separate schedules for sensor sampling, telemetry, LEDs, matrix animation and buzzer.
@@ -180,7 +180,7 @@ The current `HAL_Delay(100)` and unimplemented comments are insufficient for sim
 - [ ] Mark variables shared with interrupts as `volatile` or pass events through flags.
 - [ ] Make the EXTI callback record raw presses only; classify single versus double presses outside the ISR.
 - [ ] Delay single-press dispatch until the 0.5-second double-press window has expired.
-- [ ] Store laser energy as integer tenths (`0`–`10`) rather than float where practical.
+- [ ] Store laser energy as an integer on the 0–50 scale rather than float.
 - [ ] Use unsigned tick subtraction so rollover remains safe.
 - [ ] Add a default branch or recovery path for an invalid state.
 
@@ -214,12 +214,12 @@ Suggested update periods:
 
 - [ ] Send `Entering BATTLE MODE` immediately and once on entry.
 - [ ] Blink the board LED at 1 Hz without blocking.
-- [ ] Implement single-press charging: add exactly 3/10 and cap at 10/10.
-- [ ] Hold PB ≥500 ms in Battle with charge ≥5/10 to fire full-auto (−5 charge per shot every 500 ms).
-- [ ] Keep the laser inactive when energy is below 5/10 (hold reminds to recharge).
+- [ ] Implement single-press charging: add exactly +3 and cap at 50/50.
+- [ ] Hold PB ≥500 ms in Battle with charge ≥25/50 to fire full-auto (−5 charge per shot every 500 ms).
+- [ ] Keep the laser inactive when energy is below 25/50 (hold reminds to recharge).
 - [ ] Handle Battle double press by returning immediately to Standby when THE_LAST_OF_2028 is not active.
 - [ ] Show charge progress on the matrix (enhancement path).
-- [ ] Flash the matrix while armed: Battle and charge ≥5/10 (enhancement path).
+- [ ] Flash the matrix while armed: Battle and charge ≥25/50 (enhancement path).
 - [ ] Play the fire tone and emit `EVT FIRE` after firing.
 - [ ] Enter THE_LAST_OF_2028 when the persistent upside-down condition is detected.
 
@@ -313,8 +313,8 @@ Do these only after the wired #1–#4 demo is stable.
 - [ ] Test every state transition individually.
 - [ ] Test button bounce, slow/fast double presses and presses across tick boundaries.
 - [ ] Verify a Battle double press returns to Standby without accidentally charging.
-- [ ] Verify a single Battle press is dispatched only after 0.5 seconds and adds exactly 3/10.
-- [ ] Test charge sequences such as 0→3→6→fire→1 and 2→5→fire→0.
+- [ ] Verify a short Battle press below full charge acts immediately and adds exactly +3 (at 50/50 it waits the 0.5 s double-press window).
+- [ ] Test charge sequences such as 50→45 (fire) →…→20 (refused) →23→26 (armed) and 22→25→fire→20.
 - [ ] Confirm all six telemetry values and their units appear every second in normal Standby.
 - [ ] Force each sensor above and/or below its threshold and confirm normal telemetry pauses.
 - [ ] Force multiple simultaneous violations and confirm every violation is printed.

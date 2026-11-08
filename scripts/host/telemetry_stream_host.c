@@ -55,20 +55,17 @@ int main(void)
     Telemetry_EvtCharge((uint8_t)charge);
     Telemetry_EvtRadarLost();
 
-    /* Giant cannon: overcharge to 10/50 on a locked giant, two hits (main.c + adapter order) */
+    /* Giant cannon: 10 charge per shot on a locked giant, two hits kill it (main.c + adapter order) */
     Telemetry_EvtRadar(31, 2500U, 1U, 31, 0U, 1U);
-    charge = 50;
-    Telemetry_Printf("Cannon charging... Current charge: %d/50%s", charge, " - GIANT CANNON READY, hold to fire!");
-    Telemetry_EvtCharge((uint8_t)charge);
-    charge -= 50;
+    charge = 20;
+    Telemetry_Printf("GIANT CANNON READY (%d/50), hold to fire!", charge);
+    charge -= 10;
     Telemetry_Printf("GIANT CANNON FIRED! KA-BOOM! (Remaining charge: %d/50)", charge);
     Telemetry_EvtCannon((uint8_t)charge);
-    Telemetry_Printf("Giant hit! (%u/%u) - recharge to 10/50 to finish it.", 1U, 2U);
+    Telemetry_Printf("Giant hit! (%u/%u) - fire again (10 charge) to finish it.", 1U, 2U);
     Telemetry_EvtGiantHit(1U, 2U);
     Telemetry_EvtRadar(31, 2500U, 1U, 31, 1U, 1U); /* beam on */
-    charge = 50;
-    Telemetry_EvtCharge((uint8_t)charge);
-    charge -= 50;
+    charge -= 10;
     Telemetry_Printf("GIANT CANNON FIRED! KA-BOOM! (Remaining charge: %d/50)", charge);
     Telemetry_EvtCannon((uint8_t)charge);
     Telemetry_Printf("GIANT DOWN! The giant collapses.");

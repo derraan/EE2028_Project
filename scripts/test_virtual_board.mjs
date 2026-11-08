@@ -210,15 +210,14 @@ assert(formatRadarLine({ az: 0.05, range: 500, lock: 1, pan: -7.25, laser: 1, n:
   assert(Math.abs(r.s.radar.pan - r.s.radar.az) < AIM.ALIGNED_TOL_DEG, `servo on target, ${JSON.stringify(r.s.radar)}`);
   assert(!r.s.radar.laser, 'no aim dot: laser only lights for a cannon beam');
   r.hold(SIM.HOLD_MS + 100);
-  assert(r.s.fireSeq === 2 && r.s.cannonSeq === 0, 'below 50/50 the hold is the laser gun');
-  assert(!r.board.snapshot.radar.laser, 'gun shot does not light the cannon laser');
+  assert(r.s.fireSeq === 1 && r.s.cannonSeq === 1 && r.s.charge === 35, `locked giant + ≥10 charge: hold is the cannon (−10), got cannon=${r.s.cannonSeq} fire=${r.s.fireSeq} charge=${r.s.charge}`);
   r.board.setRadarContacts([]);
   r.advance(RADAR.LOST_TIMEOUT_MS + 100);
   assert(!r.s.radar.lock && !r.s.radar.laser && r.lines.includes('EVT RADAR lost'), 'lost clears lock + laser');
   assert(r.s.radarLockSeq === 1, 'one lock so far');
 }
 
-// Giant cannon: needs 50/50 while locked, 2 hits destroy the giant,
+// Giant cannon: 10 charge per shot (minimum 10), 2 hits destroy the giant (20 charge),
 // the lock drops and the same person re-locks as a fresh giant
 {
   const { GIANT } = await load('Command/src/radar_mirror.js');
@@ -230,31 +229,50 @@ assert(formatRadarLine({ az: 0.05, range: 500, lock: 1, pan: -7.25, laser: 1, n:
   assert(r.s.charge === 50, `full charge with a giant locked, got ${r.s.charge}`);
 
   r.hold(SIM.HOLD_MS + 100);
-  assert(r.s.cannonSeq === 1 && r.s.fireSeq === 0, `hold at 50/50 + lock fires the cannon, not the gun (cannon=${r.s.cannonSeq} fire=${r.s.fireSeq})`);
-  assert(r.s.charge === 0, `cannon spends all 50, got ${r.s.charge}`);
-  assert(r.lines.includes('EVT CANNON charge=0/50') && r.lines.includes('EVT GIANT hit=1/2'), 'cannon + first hit reported');
+  assert(r.s.cannonSeq === 1 && r.s.fireSeq === 0, `hold + lock fires the cannon, not the gun (cannon=${r.s.cannonSeq} fire=${r.s.fireSeq})`);
+  assert(r.s.charge === 40, `one cannon shot costs 10, got ${r.s.charge}`);
+  assert(r.lines.includes('EVT CANNON charge=40/50') && r.lines.includes('EVT GIANT hit=1/2'), 'cannon + first hit reported');
   assert(r.s.giant.hits === 1 && r.s.giantKills === 0, 'giant survives the first hit');
   r.advance(RADAR.EVT_PERIOD_MS + 20);
   assert(r.s.radar.laser, 'cannon beam lights the laser on the giant');
   r.advance(GIANT.BEAM_MS);
   assert(!r.board.snapshot.radar.laser, 'beam ends after GIANT.BEAM_MS');
 
-  while (r.s.charge < 50) r.tap(); // 0 → 50 in +3 steps
-  assert(r.s.charge === 50, `recharged to 50/50, got ${r.s.charge}`);
-  assert(r.lines.some((l) => /GIANT CANNON READY/.test(l)), 'cannon-ready prompt printed');
   r.hold(SIM.HOLD_MS + 100);
+  assert(r.s.charge === 30, `second shot costs another 10, got ${r.s.charge}`);
   assert(r.lines.includes('EVT GIANT down') && r.s.giantKills === 1 && r.s.giant.hits === 0, 'second hit destroys the giant');
   const locks = r.s.radarLockSeq;
   r.advance(GIANT.BEAM_MS + 600);
   assert(r.lines.filter((l) => l === 'EVT RADAR lost').length >= 1, 'lock dropped after the giant falls');
   assert(r.s.radarLockSeq === locks + 1, `same person re-locks as a new giant, locks ${locks} → ${r.s.radarLockSeq}`);
+}
 
-  // No giant: the cannon is unavailable; a full charge is plain gun ammo.
-  r.board.setRadarContacts([]);
-  r.advance(RADAR.LOST_TIMEOUT_MS + 100);
-  while (r.s.charge < 50) r.tap();
+// Cannon minimum: below 10 charge the giant cannot be fired (and below 25 the gun is refused too)
+{
+  const r = rig();
+  r.double();
+  r.hold(SIM.HOLD_MS + SIM.FIRE_PERIOD_MS * 8); // no lock: gun drains 50 → 20
+  assert(r.s.charge === 20, `gun drained to 20, got ${r.s.charge}`);
+  r.board.setRadarContacts([{ x: 0, y: 2500 }]);
+  r.advance(500);
+  r.hold(SIM.HOLD_MS + SIM.FIRE_PERIOD_MS * 3); // cannon: 20 → 10 → 0, then refused
+  assert(r.s.cannonSeq === 2 && r.s.charge === 0, `cannon fires at 20 and 10, stops at 0, got cannon=${r.s.cannonSeq} charge=${r.s.charge}`);
   r.hold(SIM.HOLD_MS + 100);
-  assert(r.s.cannonSeq === 2 && r.s.charge === 45, `no giant: hold fires the gun, got cannon=${r.s.cannonSeq} charge=${r.s.charge}`);
+  assert(r.s.cannonSeq === 2, 'no cannon shot with 0 charge');
+  r.tap();
+  r.tap();
+  r.tap();
+  assert(r.s.charge === 9 && !r.lines.some((l) => /GIANT CANNON READY/.test(l)), `9 charge: not ready yet, got ${r.s.charge}`);
+  r.tap();
+  assert(r.s.charge === 12 && r.lines.some((l) => /GIANT CANNON READY \(12\/50\)/.test(l)), 'cannon-ready prompt at ≥10 with a lock');
+}
+
+// No giant: the cannon is unavailable; the hold is the plain gun even at full charge.
+{
+  const r = rig();
+  r.double();
+  r.hold(SIM.HOLD_MS + 100);
+  assert(r.s.cannonSeq === 0 && r.s.fireSeq === 1 && r.s.charge === 45, `no giant: hold fires the gun, got cannon=${r.s.cannonSeq} charge=${r.s.charge}`);
 }
 
 // Out of FOV / too close / too far are ignored; a nearer zombie steals the lock

@@ -38,7 +38,7 @@ Threshold violation lines from PR #3 (e.g. `T:40.10 C, exceeds threshold…`) re
 
 ## 2) Machine-readable `EVT` lines
 
-> **Charge scale:** the official laser charge range is **0–50** (starts 50/50, +3 per recharge, firing needs ≥25, −5 per shot, cannon spends all 50). Legacy `n/10` logs are still accepted by the VESPER parser and rescaled ×5.
+> **Charge scale:** the official laser charge range is **0–50** (starts 50/50, +3 per recharge, firing needs ≥25, −5 per shot, cannon needs ≥10 and spends 10 per shot, so a giant (2 hits) costs 20). Legacy `n/10` logs are still accepted by the VESPER parser and rescaled ×5.
 
 | Line | When | Notes |
 |------|------|--------|
@@ -55,7 +55,7 @@ Threshold violation lines from PR #3 (e.g. `T:40.10 C, exceeds threshold…`) re
 | `EVT THRESHOLD_OK` | Optional | Clear sticky threshold warning |
 | `EVT RADAR az=… range_mm=… lock=1 pan=… laser=0\|1 n=…` | RD-03D lock, then every 250 ms while locked | Enhancement #5. `az`/`pan` in degrees (one decimal, + = right of boresight). See `docs/Radar_Aim_Design.md` |
 | `EVT RADAR lost` | Locked track dropped (timeout, leaving Standby/Battle, or after a giant is destroyed) | Clears the lock in VESPER |
-| `EVT CANNON charge=0/50` | Giant cannon fired: Battle + radar lock + 50/50, hold-to-fire (`main.c`) | Charge **after** the shot; separate from `EVT FIRE` (gun) |
+| `EVT CANNON charge=n/50` | Giant cannon fired: Battle + radar lock + charge ≥10, hold-to-fire (`main.c`) | Charge **after** the shot; separate from `EVT FIRE` (gun) |
 | `EVT GIANT hit=1/2` | First cannon hit on the locked giant (adapter) | Giant HP = 2 |
 | `EVT GIANT down` | Second hit: giant destroyed. Lock is dropped when the beam ends, so the same person re-locks as a new giant | |
 | `EVT GIANT miss` | Cannon fired but the lock was lost first | |
