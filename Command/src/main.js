@@ -18,6 +18,7 @@ import { bindHud, invalidateHud } from './bindings.js';
 import { createVirtualBoard, SIM } from './sim.js';
 import { replayFixture, stopReplay } from './replay.js';
 import { connectSerial, disconnectSerial, webSerialSupported } from './serial.js';
+import { connectWifi, disconnectWifi, scanWifi, lastWifiHost } from './wifi.js';
 import { createWorld } from './world/world.js';
 import { createRadar } from './world/radar.js';
 import { createAudio } from './world/audio.js';
@@ -86,17 +87,19 @@ function toast(message) {
 
 // ---------------------------------------------------------------- sources
 
-const PANELS = { simulation: 'simulationControls', replay: 'replayControls', paste: 'pastePanel', serial: 'serialControls' };
+const PANELS = { simulation: 'simulationControls', replay: 'replayControls', paste: 'pastePanel', serial: 'serialControls', wifi: 'wifiControls' };
 const FRESHNESS = {
   simulation: "Browser board prints the firmware's UART lines",
   replay: 'Recorded fixture · no live connection',
   paste: 'Pasted log · no live connection',
   serial: webSerialSupported() ? 'Live UART from the B-L4S5I-IOT01A' : 'Web Serial needs Chrome or Edge',
+  wifi: 'Live telemetry over Wi-Fi (ISM43362 → serve.mjs bridge)',
 };
 
 async function startSource(next) {
   stopReplay();
   if (source === 'serial' && next !== 'serial') await disconnectSerial();
+  if (source === 'wifi' && next !== 'wifi') disconnectWifi();
   source = next;
   $('source').value = next;
   for (const [key, id] of Object.entries(PANELS)) $(id).hidden = key !== source;
@@ -211,6 +214,49 @@ $('serialConnect').addEventListener('click', async () => {
 $('serialDisconnect').addEventListener('click', async () => {
   await disconnectSerial();
   toast('Disconnected (link loss, not TERMINATE)');
+});
+
+// Wi-Fi board (ISM43362 TCP → serve.mjs SSE bridge)
+$('wifiHost').value = lastWifiHost();
+const wifiHint = (text) => {
+  $('wifiHint').textContent = text;
+};
+$('wifiConnect').addEventListener('click', () => {
+  try {
+    connectWifi($('wifiHost').value.trim(), (s) => {
+      if (s.startsWith('connected')) {
+        wifiHint(`Streaming from ${s.slice(10)}`);
+        toast('Board connected over Wi-Fi');
+        invalidateHud();
+      } else if (s.startsWith('connecting')) wifiHint(`Connecting to ${s.slice(11)}…`);
+      else if (s === 'closed') wifiHint('Board dropped off Wi-Fi — retrying every 2 s…');
+      else if (s.startsWith('error')) wifiHint(`Board unreachable (${s.slice(6)}) — same hotspot? retrying…`);
+      else wifiHint(s);
+    });
+  } catch (error) {
+    toast(String(error.message || error));
+  }
+});
+$('wifiDisconnect').addEventListener('click', () => {
+  disconnectWifi();
+  wifiHint('Disconnected (link loss, not TERMINATE)');
+});
+$('wifiScan').addEventListener('click', async () => {
+  $('wifiScan').disabled = true;
+  wifiHint('Scanning this laptop’s networks for a board on TCP 5028…');
+  try {
+    const r = await scanWifi();
+    if (r.found.length) {
+      $('wifiHost').value = r.found[0];
+      wifiHint(`Found ${r.found.join(', ')} on ${r.subnets.join(', ')}.x — press Connect.`);
+    } else {
+      wifiHint(`No board on ${r.subnets.map((s) => `${s}.x`).join(', ') || 'any network'} — same hotspot? Wi-Fi joined (see UART)?`);
+    }
+  } catch (error) {
+    wifiHint(`Scan needs node Command/serve.mjs (${error.message || error})`);
+  } finally {
+    $('wifiScan').disabled = false;
+  }
 });
 
 // ---------------------------------------------------------------- chrome

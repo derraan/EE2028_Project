@@ -38,7 +38,12 @@ void Telemetry_WriteLine(const char *line)
 {
 	static const uint8_t crlf[2] = {'\r', '\n'};
 
-	if ((line == NULL) || (s_ready == 0U)) {
+	if (line == NULL) {
+		return;
+	}
+	/* Same line to the Wi-Fi TCP client, if one is connected (queued, non-blocking). */
+	Telemetry_WifiEnqueue(line);
+	if (s_ready == 0U) {
 		return;
 	}
 	/* Blocking is fine: ~9 ms for a 100-byte line at 115200, a few lines/s. */

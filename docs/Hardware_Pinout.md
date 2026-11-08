@@ -18,6 +18,7 @@ Every module is optional. If one is missing the firmware skips it and the drone 
 | On-board sensors | **PB10** SCL / **PB11** SDA | I2C2 (BSP) | HTS221 (T, H), LPS22HB (P), LSM6DSL (accel, gyro), LIS3MDL (mag) |
 | Telemetry → VESPER / Tera Term | **PB6** TX / **PB7** RX | USART1, AF7 | ST-LINK Virtual COM, **115200 8N1** (`telemetry_uart.c`) |
 | Programming / debug | SWD | ST-LINK | Flash + semihosting (CubeIDE Console only while debugging) |
+| Wi-Fi module (ISM43362) | **PC10** SCK / **PC11** MISO / **PC12** MOSI, **PE0** CSN, **PE1** DRDY, **PE8** RST, **PB13** WAKEUP (BOOT0 PB12 not driven) | SPI3 (AF6), EXTI1 on PE1 | Telemetry over Wi-Fi, TCP 5028 (`telemetry_wifi.c`), only when `App/Inc/wifi_config.h` exists. All internal pins: no conflict with the Arduino header |
 
 No wiring needed: these are on the board. Connect one USB cable to the **ST-LINK** port.
 

@@ -22,6 +22,7 @@ Pick a **signal source** in the control deck:
 | **Recorded mission** | `fixtures/*.log` replayed line by line |
 | **Paste UART log** | Any Tera Term capture |
 | **Live board** | Chrome/Edge Web Serial @ 115200 8N1 → ST-LINK VCP. Disconnect = link loss, **not** `TERMINATE`. |
+| **Live board (Wi-Fi)** | Board's ISM43362 TCP :5028 → `serve.mjs` `/wifi/stream` (SSE) → same parser. **Find board** scans the hotspot; board drop = link loss, bridge retries every 2 s. |
 
 Every source goes through the **same** `src/parser.js`.
 

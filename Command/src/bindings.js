@@ -22,6 +22,7 @@ const LINK_LABEL = {
   sim: 'VIRTUAL BOARD',
   replay: 'UART REPLAY',
   uart: 'UPLINK LIVE',
+  wifi: 'LIVE WI-FI',
   severed: 'LINK LOST',
 };
 

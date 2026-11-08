@@ -7,11 +7,24 @@ Unified **mission UART** stream for Tera Term and VESPER. One message per line (
 | Path | API | Transport | Audience |
 |------|-----|-----------|----------|
 | **Mission UART** | `Telemetry_WriteLine` / `Telemetry_Printf` / `Telemetry_SendSensors` / `Telemetry_Evt*` | USART1 (PB6/PB7) → ST-LINK VCP @ **115200 8N1** | Tera Term + VESPER |
+| **Mission Wi-Fi** | same lines (fed by `Telemetry_WriteLine`) | On-board ISM43362 → TCP server **port 5028** → `node Command/serve.mjs` bridge → SSE → VESPER | VESPER ("Live board (Wi-Fi)") |
 | **Debug** | plain `printf` | Semihosting → CubeIDE Console (only while a debugger is attached) | Developer only |
 
 On the board, [`App/Src/telemetry_uart.c`](../App/Src/telemetry_uart.c) provides the strong `Telemetry_WriteLine` (blocking `HAL_UART_Transmit`, `<line>\r\n`); `main.c` calls `Telemetry_UartInit()` right after `HAL_Init()`. The weak `printf` fallback in `telemetry_evt.c` is only used by host tests. Never send mission/EVT text through raw `printf`.
 
 Regression: `node scripts/test_vesper_ingest.mjs` builds the real `telemetry_evt.c` on the host, emits a full mission in `main.c` order, and feeds the exact CRLF byte stream to VESPER's parser in random chunks.
+
+### Wi-Fi transport
+
+- **Same bytes as UART.** `Telemetry_WriteLine` queues each `<line>
+` for the Wi-Fi client too (`App/Src/telemetry_wifi.c`). Lines are only queued while a client is connected; older lines are stale.
+- **Board = TCP server** on port 5028 (one client). It announces itself on UART: `Wi-Fi: connected to <ssid>, IP a.b.c.d, telemetry TCP port 5028`.
+- **Snapshot on connect.** When a client connects, `main.c` resends `EVT MODE=…`, `EVT CHARGE=n/50` and, in The Last of EE2028, `EVT COUNTDOWN`, so a late-joining VESPER shows the current state.
+- **Bridge.** Browsers cannot open TCP, so `Command/bridge/wifi_bridge.mjs` (inside `serve.mjs`) serves `GET /wifi/stream?host=<ip>` (one SSE `data:` per line, `event: status` for connecting / connected / closed / error, retry every 2 s) and `GET /wifi/scan` (finds hosts with 5028 open on the laptop's /24 networks). It forwards raw lines only; parsing stays in `parser.js`.
+- **Non-blocking firmware.** `ism43362.c` (SPI AT engine) and `wifi_link.c` (join → IP → server → listen → batched `S3` sends every ≥150 ms) advance one bounded step per main-loop pass: no `HAL_Delay`, no spin-waits.
+- **Enable** by creating the git-ignored `App/Inc/wifi_config.h` from `wifi_config.example.h`. Without it, Wi-Fi is off and UART is unchanged.
+
+Regression: `node scripts/test_wifi_host.mjs` (fake ISM43362 at the SPI byte level: join, server, exact stream, batching, reconnect, wrong password, dead module) and `node scripts/test_wifi_bridge.mjs` (fake TCP board → real `serve.mjs` → SSE → parser, byte-identical lines, reconnect, scan).
 
 Firmware helpers: [`App/Inc/telemetry_evt.h`](../App/Inc/telemetry_evt.h), [`App/Src/telemetry_evt.c`](../App/Src/telemetry_evt.c).
 

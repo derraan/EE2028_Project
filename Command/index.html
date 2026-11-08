@@ -109,6 +109,14 @@
         <button id="serialDisconnect" class="deck-btn" type="button">Disconnect</button>
         <small id="serialHint">Chrome / Edge · ST-LINK VCP @ 115200 8N1 · unplugging is link loss, not mission end.</small>
       </div>
+      <div class="deck-panel" id="wifiControls" hidden>
+        <label for="wifiHost" class="sr-only">Board IP address</label>
+        <input id="wifiHost" class="deck-input" type="text" inputmode="decimal" placeholder="Board IP, e.g. 172.20.10.5" autocomplete="off" spellcheck="false">
+        <button id="wifiScan" class="deck-btn" type="button">Find board</button>
+        <button id="wifiConnect" class="deck-btn primary" type="button">Connect</button>
+        <button id="wifiDisconnect" class="deck-btn" type="button">Disconnect</button>
+        <small id="wifiHint">Laptop on the same hotspot · run <code>node Command/serve.mjs</code> · the board prints its IP on UART at boot.</small>
+      </div>
       <div class="deck-source">
         <label for="source">Signal source</label>
         <select id="source">
@@ -116,6 +124,7 @@
           <option value="replay">Recorded mission</option>
           <option value="paste">Paste UART log</option>
           <option value="serial">Live board (Web Serial)</option>
+          <option value="wifi">Live board (Wi-Fi)</option>
         </select>
         <small id="freshness">Browser board prints the firmware's UART lines</small>
       </div>

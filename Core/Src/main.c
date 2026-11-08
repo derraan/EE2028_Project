@@ -168,6 +168,7 @@ void PB_OnSinglePress(void);
 void PB_CancelPendingSingle(void);
 void Enter_The_Last_Of_2028(void);
 void Enter_Self_Destruct(const char *reason);
+static void Telemetry_SendSnapshot(void);
 #if defined(EE_ENHANCEMENTS) && (EE_ENHANCEMENTS != 0)
 static void Fill_DroneStatus(DroneStatus_t *out);
 static void Enhancements_Tick(void);
@@ -322,6 +323,9 @@ int main(void)
 
     /* Mission telemetry → ST-LINK Virtual COM (USART1 115200 8N1) for Tera Term / VESPER. */
     Telemetry_UartInit();
+    /* Same telemetry over Wi-Fi (ISM43362 TCP server) when App/Inc/wifi_config.h
+     * exists. Starts the join in the background; Telemetry_WifiPoll() drives it. */
+    Telemetry_WifiInit(HAL_GetTick());
 
     /* Peripheral and Board Initializations using BSP functions */
     BSP_LED_Init(LED2);
@@ -368,6 +372,13 @@ int main(void)
     while (1)
     {
         uint32_t current_tick = HAL_GetTick();
+
+        /* Wi-Fi telemetry: one bounded step; on a new client resend the state. */
+        Telemetry_WifiPoll(current_tick);
+        if (Telemetry_WifiTakeNewClient() != 0U) {
+            Telemetry_SendSnapshot();
+        }
+
         float dt = (float)(current_tick - last_tick) / 1000.0f;
         if (dt <= 0.0f) dt = 0.01f;
         if (dt > 0.5f) dt = 0.5f;
@@ -560,12 +571,15 @@ int main(void)
                         now = HAL_GetTick();
                         Fill_DroneStatus(&st);
                         Enhancements_Update(&st, now);
+                        Telemetry_WifiPoll(now); /* flush TERMINATE / Cheerio! */
                     } while (Enhancements_FinalEffectsDone(now) == 0U);
                     Enhancements_Shutdown();
                 }
 #endif
                 while (1) {
-                    /* Permanent self-destruct halt */
+                    /* Permanent self-destruct halt: only finish sending queued
+                     * Wi-Fi telemetry (TERMINATE / Cheerio!). */
+                    Telemetry_WifiPoll(HAL_GetTick());
                 }
                 break;
         }
@@ -576,9 +590,36 @@ int main(void)
     }
 }
 
+/* A Wi-Fi client joined mid-mission: resend what VESPER needs to show the
+ * current state (mode, charge, rescue countdown). Same EVT lines as usual. */
+static void Telemetry_SendSnapshot(void)
+{
+    switch (current_state) {
+        case STANDBY_MODE:
+            Telemetry_EvtMode(EVT_MODE_STANDBY);
+            break;
+        case BATTLE_MODE:
+            Telemetry_EvtMode(EVT_MODE_BATTLE);
+            break;
+        case THE_LAST_OF_2028: {
+            uint32_t elapsed = HAL_GetTick() - the_last_of_2028_entry_tick;
+            Telemetry_EvtMode(EVT_MODE_THE_LAST_OF_2028);
+            Telemetry_EvtCountdown((elapsed >= RESCUE_TIMEOUT_MS) ? 0U : (RESCUE_TIMEOUT_MS - elapsed));
+            break;
+        }
+        default:
+            return; /* self-destruct in progress: TERMINATE follows */
+    }
+    Telemetry_EvtCharge((uint8_t)Laser_Clamp(laser_charge));
+}
+
 /* --- EXTI: stamp rising/falling edges (GPIO level classified in Process_PushButton) --- */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
+    if (GPIO_Pin == GPIO_PIN_1) {
+        Telemetry_WifiDrdyIsr(); /* ISM43362 DATA-READY (PE1 / EXTI1) */
+        return;
+    }
     if (GPIO_Pin != USER_BUTTON_PIN) {
         return;
     }

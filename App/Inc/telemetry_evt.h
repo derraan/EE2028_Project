@@ -33,6 +33,19 @@ extern "C" {
 void Telemetry_UartInit(void);
 
 /**
+ * Wi-Fi telemetry (telemetry_wifi.c): the same lines also stream to one TCP
+ * client on the ISM43362 (port 5028) once App/Inc/wifi_config.h exists.
+ * Non-blocking: call Init once after Telemetry_UartInit(), Poll every main
+ * loop pass. Telemetry_WriteLine feeds Enqueue. TakeNewClient returns 1 once
+ * per new client so main.c can resend a state snapshot.
+ */
+void Telemetry_WifiInit(uint32_t now_ms);
+void Telemetry_WifiPoll(uint32_t now_ms);
+void Telemetry_WifiEnqueue(const char *line);
+uint8_t Telemetry_WifiTakeNewClient(void);
+void Telemetry_WifiDrdyIsr(void); /* EXTI1 (PE1) from HAL_GPIO_EXTI_Callback */
+
+/**
  * Low-level line writer (appends \\r\\n). On the board, telemetry_uart.c sends
  * it to the ST-LINK COM port. The weak default in telemetry_evt.c (printf) is
  * only used by host tests that do not link telemetry_uart.c.

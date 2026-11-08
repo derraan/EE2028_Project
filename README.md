@@ -72,6 +72,7 @@ Do not “fix” these from older checklist wording without a focused patch:
 | Pan servo | D5 = PB4, TIM3_CH1 50 Hz | Tracks the lock; one self-test sweep at boot |
 | Laser (giant cannon) | D7 = PA4, via transistor | Lit only for a 1 s cannon beam |
 | Telemetry | ST-LINK VCP (USART1 PB6/PB7, 115200) | Tera Term / VESPER |
+| Wi-Fi telemetry (optional) | On-board ISM43362 (SPI3), TCP 5028 | Same lines to VESPER via `serve.mjs` bridge; needs `App/Inc/wifi_config.h` |
 
 Full pinout incl. on-board LED / button / sensors, power rules and safe boot states: [docs/Hardware_Pinout.md](docs/Hardware_Pinout.md).
 
