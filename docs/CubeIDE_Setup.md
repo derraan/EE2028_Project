@@ -137,22 +137,9 @@ Other tuning macros (servo trim, radar mirroring, laser offsets, matrix I2C hand
 
 ### 3.6 Wiring (Enhanced build)
 
-No CubeMX pin setup is needed: the firmware configures every pin below itself. Every module is optional: a missing one is skipped and the drone still runs.
+**Full pinout, power rules and safe boot states: [`docs/Hardware_Pinout.md`](Hardware_Pinout.md).** No CubeMX pin setup is needed: the firmware configures every pin itself, and every module is optional.
 
-| Module | Board pin | MCU pin / peripheral | Notes |
-|---|---|---|---|
-| Grove LED matrix (HT16K33) | **D15** SCL, **D14** SDA | PB8 / PB9, I2C1 (AF4) | Address 0x70. Brought up by `Enhancements_HW_MatrixI2C()` |
-| Grove buzzer (active) | **D2** | PD14 | ON/OFF rhythms only |
-| Grove IR reflective sensor | **D3** | PB0 | Active-LOW, internal pull-up |
-| Relay control (CAP_EXPLODE) | **D4** | PA3 | Goes HIGH once at self-destruct. Switch only an instructor-approved low-voltage load |
-| RD-03D radar TX → | **D0** | PA1, UART4_RX (AF8) | 256000 8N1, 3.3 V logic. Radar VCC = **5 V** |
-| RD-03D radar RX ← | **D1** | PA0, UART4_TX (AF8) | Firmware sends the multi-target command at boot |
-| Pan servo signal | **D5** | PB4, TIM3_CH1 (AF2) | 50 Hz. Power the servo from its **own 5 V** supply, common GND |
-| Laser module | **D7** | PA4 | Through an NPN/MOSFET switch, active-HIGH, driven LOW at boot |
-
-Share GND between the board and every module. On-board sensors stay on the BSP's I2C2 (PB10/PB11) and are not affected.
-
-> **RD-03E is not supported.** The radar code parses **RD-03D** frames and needs azimuth. An RD-03E (presence + distance only) wired to D0/D1 is ignored by the parser. Leave its RX unconnected so it does not receive the RD-03D boot command. RD-03E ranging is planned separately (Task 6a in `docs/Darren's_Tasks.md`).
+Quick reference: matrix **D15/D14** (I2C1), buzzer **D2**, IR **D3**, relay **D4**, RD-03D **D0/D1** (UART4, radar VCC 5 V), pan servo **D5** (own 5 V supply, common GND), laser **D7** (through a transistor). Telemetry uses the ST-LINK USB (USART1). Only the **RD-03D** radar is supported (not the RD-03E).
 
 ---
 
@@ -252,7 +239,7 @@ If text on the matrix is mirrored or upside down, note which and see `docs/LED_M
 | VESPER **Connect board** does nothing | Browser without Web Serial | Use Chrome or Edge on http://localhost:3000 |
 | Matrix stays dark on Enhanced | Not on D15/D14, no power/GND, or the build is **Debug** (enhancements compiled out) | Check §3.6 wiring and that the **Enhanced** `.elf` was flashed. The firmware skips a matrix that does not answer at 0x70 |
 | No buzzer / matrix changes after `git pull` | CubeIDE did not see the new files | **F5**, **Project → Clean…**, rebuild |
-| Radar never locks with an RD-03E | Wrong module: the parser is for RD-03D | See the RD-03E note in §3.6 |
+| Radar never locks with an RD-03E | Wrong module: the parser is for RD-03D | See the RD-03E note in `docs/Hardware_Pinout.md` §5 |
 
 ---
 

@@ -162,6 +162,8 @@ The GPIO drives the relay module's control input, not a relay coil directly. The
 
 ## Discovery kit map (basics + hooks)
 
+Pin-level detail for everything below: [`docs/Hardware_Pinout.md`](Hardware_Pinout.md).
+
 Board of record: **B-L4S5I-IOT01A** (PR #3 BSP `B-L4S5I-IOT01` / `stm32l4s5i_iot01*`).
 
 | Variable / feature | Hardware |
@@ -174,7 +176,7 @@ Board of record: **B-L4S5I-IOT01A** (PR #3 BSP `B-L4S5I-IOT01` / `stm32l4s5i_iot
 | UART Command Center (#4) | ST-LINK Virtual COM |
 | Wi‑Fi / BLE (#6) | On-kit radio modules |
 | HUD / IR / buzzer (#1–#3) | **Owned Grove trio** |
-| mmWave + 2‑DOF aim (#5) | External radar + 2 servos + laser/LED |
+| mmWave aim + giant cannon (#5) | RD-03D on D0/D1 + 1 pan servo (D5) + laser (D7) |
 | UAV (#7) | FC + airframe **or** companion link to Discovery |
 
 ---

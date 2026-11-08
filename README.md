@@ -68,6 +68,12 @@ Do not “fix” these from older checklist wording without a focused patch:
 | Buzzer | D2 = PD14 | Battle entry, recharge / denied, fire, threat chirp, accelerating countdown, rescue OK / fail, final burst |
 | IR sensor | D3 = PB0 (active-LOW) | Detect → log + chirp |
 | Relay `CAP_EXPLODE` | D4 = PA3 | HIGH on self-destruct start (safe sim load only) |
+| RD-03D radar | D0 = PA1 (RX) / D1 = PA0 (TX), UART4 256000 | Giant lock → matrix, servo, `EVT RADAR` |
+| Pan servo | D5 = PB4, TIM3_CH1 50 Hz | Tracks the lock; one self-test sweep at boot |
+| Laser (giant cannon) | D7 = PA4, via transistor | Lit only for a 1 s cannon beam |
+| Telemetry | ST-LINK VCP (USART1 PB6/PB7, 115200) | Tera Term / VESPER |
+
+Full pinout incl. on-board LED / button / sensors, power rules and safe boot states: [docs/Hardware_Pinout.md](docs/Hardware_Pinout.md).
 
 The shared adapter (`enhancements.c` / `enhancements_hw.c`) watches a `DroneStatus_t` snapshot each tick and handles two one-shot events: laser fired, self-destruct started. Live mode uses **one** 10 s rescue clock for matrix and buzzer.
 

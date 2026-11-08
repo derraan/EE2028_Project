@@ -2,7 +2,8 @@
  * @file enhancements_hw.h
  * @brief Board backends for matrix / buzzer / IR / relay (Cube pin aliases).
  *
- * Board of record B-L4S5I-IOT01A Arduino pins (lab Cube main.h / .ioc):
+ * Board of record B-L4S5I-IOT01A Arduino pins (lab Cube main.h / .ioc).
+ * Full pinout + power rules: docs/Hardware_Pinout.md (update it with any pin change).
  *   Matrix HT16K33  — I2C1 Arduino D15/D14 (PB8 SCL / PB9 SDA), addr 0x70,
  *                     brought up by Enhancements_HW_MatrixI2C()
  *   Buzzer          — D2  (ARD_D2 / PD14)
