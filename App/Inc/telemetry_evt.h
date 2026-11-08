@@ -45,6 +45,9 @@ void Telemetry_WriteLine(const char *line);
  */
 void Telemetry_Printf(const char *fmt, ...);
 
+/** Laser charge scale shared with main.c (official 0..50 requirement). */
+#define EVT_CHARGE_MAX 50U
+
 /** PR #3 sensor layout (Standby nominal path). Vectors keep axis order X,Y,Z. */
 void Telemetry_SendSensors(float t_c, float p_hpa, float h_pct,
                            const float accel_mps2[3],
@@ -52,7 +55,7 @@ void Telemetry_SendSensors(float t_c, float p_hpa, float h_pct,
                            const float magneto_mgauss[3]);
 
 void Telemetry_EvtMode(const char *mode_tag);
-void Telemetry_EvtCharge(uint8_t charge_tenths);          /* n/10 after recharge */
+void Telemetry_EvtCharge(uint8_t charge_units);           /* n/50 after recharge */
 void Telemetry_EvtFire(uint8_t charge_after_shot);        /* charge AFTER the shot */
 void Telemetry_EvtCountdown(uint32_t remaining_ms);      /* firmware rescue deadline */
 void Telemetry_EvtSelfDestruct(const char *reason_token);
@@ -71,8 +74,8 @@ void Telemetry_EvtRadar(int16_t az_ddeg, uint16_t range_mm, uint8_t locked,
 void Telemetry_EvtRadarLost(void);                       /* EVT RADAR lost */
 
 /**
- * Giant cannon (radar-locked giant, needs 10/10, uses all 10).
- *   EVT CANNON charge=0/10      — main.c, the shot itself (charge AFTER)
+ * Giant cannon (radar-locked giant, needs 50/50, uses all 50).
+ *   EVT CANNON charge=0/50      — main.c, the shot itself (charge AFTER)
  *   EVT GIANT hit=1/2           — adapter, first hit on the locked giant
  *   EVT GIANT down              — adapter, second hit: giant destroyed
  *   EVT GIANT miss              — adapter, lock was lost before the shot landed

@@ -26,7 +26,7 @@ const sample = replayFile('Command/fixtures/mission_uart_sample.log');
 assert(sample.missionEnded === true, 'sample should TERMINATE');
 assert(sample.mode === 'TERMINATED', `mode=${sample.mode}`);
 assert(sample.lastSelfDestructReason === 'timeout', `reason=${sample.lastSelfDestructReason}`);
-assert(sample.charge === 5, `charge after last fire path expected 5, got ${sample.charge}`);
+assert(sample.charge === 25, `charge after last fire path expected 25, got ${sample.charge}`);
 assert(sample.telemetry.T === 26.5, `T=${sample.telemetry.T}`);
 assert(sample.telemetry.Accel[2] === 9.7, `Accel Z=${sample.telemetry.Accel[2]}`);
 assert(sample.telemetry.units.P === 'hPa', 'units preserved');
@@ -41,7 +41,7 @@ assert(sample.lineCount === sample.rawLog.length, `lineCount=${sample.lineCount}
 // T/A/G trip prose + rescue attempt prose
 {
   const p = createParser();
-  p.pushLine('Critical T/A/G threshold violated -> Entering BATTLE MODE. (Laser Charge: 0/10)');
+  p.pushLine('Critical T/A/G threshold violated -> Entering BATTLE MODE. (Laser Charge: 0/50)');
   assert(p.state.mode === 'BATTLE_MODE' && p.state.tripSeq === 1, 'T/A/G trip parsed');
   p.pushLine('EVT MODE=THE_LAST_OF_2028');
   p.pushLine('EVT COUNTDOWN remaining_ms=10000');
@@ -63,7 +63,7 @@ p2.pushChunk('EVT MODE=BATTLE');
 p2.pushChunk('_MODE\r\nEVT FIRE char');
 p2.pushChunk('ge=2/10\n');
 assert(p2.state.mode === 'BATTLE_MODE', `chunk mode=${p2.state.mode}`);
-assert(p2.state.charge === 2 && p2.state.armed === false, `chunk charge=${p2.state.charge}`);
+assert(p2.state.charge === 10 && p2.state.armed === false, `chunk charge=${p2.state.charge}`);
 
 // Disconnect ≠ terminate
 p2.markDisconnect();

@@ -38,13 +38,15 @@ Threshold violation lines from PR #3 (e.g. `T:40.10 C, exceeds threshold…`) re
 
 ## 2) Machine-readable `EVT` lines
 
+> **Charge scale:** the official laser charge range is **0–50** (starts 50/50, +3 per recharge, firing needs ≥25, −5 per shot, cannon spends all 50). Legacy `n/10` logs are still accepted by the VESPER parser and rescaled ×5.
+
 | Line | When | Notes |
 |------|------|--------|
 | `EVT MODE=STANDBY_MODE` | Enter Standby | |
 | `EVT MODE=BATTLE_MODE` | Enter Battle | |
 | `EVT MODE=THE_LAST_OF_2028` | Enter Last of 2028 | Preferred tag for new EVT (see §3) |
-| `EVT CHARGE=n/10` | After a successful recharge | `n` is charge **after** the add |
-| `EVT FIRE charge=n/10` | After a accepted shot | `n` is charge **after** the shot |
+| `EVT CHARGE=n/50` | After a successful recharge | `n` is charge **after** the add |
+| `EVT FIRE charge=n/50` | After a accepted shot | `n` is charge **after** the shot |
 | `EVT COUNTDOWN remaining_ms=N` | During Last of 2028 | From firmware rescue deadline |
 | `EVT SELF_DESTRUCT reason=…` | Self-destruct starts | Tokens: `timeout`, `rescue_limit`, `early` |
 | `EVT TERMINATE` | Mission end | **Immediately before** `Cheerio!` |
@@ -53,7 +55,7 @@ Threshold violation lines from PR #3 (e.g. `T:40.10 C, exceeds threshold…`) re
 | `EVT THRESHOLD_OK` | Optional | Clear sticky threshold warning |
 | `EVT RADAR az=… range_mm=… lock=1 pan=… laser=0\|1 n=…` | RD-03D lock, then every 250 ms while locked | Enhancement #5. `az`/`pan` in degrees (one decimal, + = right of boresight). See `docs/Radar_Aim_Design.md` |
 | `EVT RADAR lost` | Locked track dropped (timeout, leaving Standby/Battle, or after a giant is destroyed) | Clears the lock in VESPER |
-| `EVT CANNON charge=0/10` | Giant cannon fired: Battle + radar lock + 10/10, hold-to-fire (`main.c`) | Charge **after** the shot; separate from `EVT FIRE` (gun) |
+| `EVT CANNON charge=0/50` | Giant cannon fired: Battle + radar lock + 50/50, hold-to-fire (`main.c`) | Charge **after** the shot; separate from `EVT FIRE` (gun) |
 | `EVT GIANT hit=1/2` | First cannon hit on the locked giant (adapter) | Giant HP = 2 |
 | `EVT GIANT down` | Second hit: giant destroyed. Lock is dropped when the beam ends, so the same person re-locks as a new giant | |
 | `EVT GIANT miss` | Cannon fired but the lock was lost first | |
@@ -63,8 +65,8 @@ Example stream (plan shape):
 ```text
 Telemetry -> T:26.4 °C, P:1012.5 hPa, H:55.1 % | Accel:[0.0, 0.1, 9.8] m/s^2 | Gyro:[0.0, 0.0, 0.2] dps | Magneto:[31.0, 42.0, 18.0] mgauss
 EVT MODE=BATTLE_MODE
-EVT CHARGE=6/10
-EVT FIRE charge=1/10
+EVT CHARGE=30/50
+EVT FIRE charge=25/50
 EVT MODE=THE_LAST_OF_2028
 EVT COUNTDOWN remaining_ms=9000
 EVT SELF_DESTRUCT reason=timeout

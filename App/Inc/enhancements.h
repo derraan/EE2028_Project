@@ -35,7 +35,7 @@ typedef enum {
     DRONE_EVENT_LASER_RECHARGED,   /* Battle single press added +3 charge     */
     DRONE_EVENT_LASER_DENIED,      /* hold-to-fire refused: charge < 5        */
     DRONE_EVENT_RESCUE_FAILED,     /* double press while still upside down    */
-    DRONE_EVENT_CANNON_FIRED       /* giant cannon shot: 10/10 spent on a locked giant */
+    DRONE_EVENT_CANNON_FIRED       /* giant cannon shot: full charge (50/50) spent on a locked giant */
 } DroneEvent_t;
 
 /* Giant cannon: a radar-locked target is a giant. Hits to destroy one, and
@@ -86,7 +86,7 @@ const RadarTarget_t *Enhancements_RadarTarget(void);
 
 /**
  * 1 when the giant cannon can fire: the radar holds a lock (a giant) and the
- * self-destruct sequence has not started. main.c adds the Battle + 10/10
+ * self-destruct sequence has not started. main.c adds the Battle + 50/50
  * charge rule and owns the charge; the adapter owns giant HP.
  */
 uint8_t Enhancements_CannonReady(void);

@@ -74,11 +74,11 @@ function objective(state, world) {
       if (infected > 0) {
         return [
           `Defend the lab — ${infected} infected`,
-          state.armed ? 'Laser armed. Hold PB ≥ 0.5 s — every shot vaporises the closest threat.' : 'Tap PB to charge the laser (+3 per tap). Firing needs 5/10.',
+          state.armed ? 'Laser armed. Hold PB ≥ 0.5 s — every shot vaporises the closest threat.' : 'Tap PB to charge the laser (+3 per tap). Firing needs 25/50.',
         ];
       }
       return world.kills > 0
-        ? ['Perimeter holding', 'More spore pods are inbound. Keep charge above 5/10, or double press PB to stand down.']
+        ? ['Perimeter holding', 'More spore pods are inbound. Keep charge at 25/50 or more, or double press PB to stand down.']
         : ['Weapons free', 'Tap PB to charge. Spore pods are falling on the field.'];
     default:
       if (infected > 0) return ['Contact on the field', `${infected} infected approaching E4-03-07. Double press PB to enter Battle.`];
@@ -136,7 +136,7 @@ export function bindHud(state, world) {
 
   // Laser core
   $('charge').firstChild.nodeValue = String(state.charge);
-  $('chargeFill').style.width = `${state.charge * 10}%`;
+  $('chargeFill').style.width = `${(state.charge / 50) * 100}%`;
   $('chargeMeter').setAttribute('aria-valuenow', String(state.charge));
   const armed = $('armed');
   const armedText = state.armed ? (state.mode === 'BATTLE_MODE' ? 'ARMED' : 'CHARGED') : state.mode === 'BATTLE_MODE' ? 'CHARGING' : 'SAFE';
@@ -153,16 +153,16 @@ export function bindHud(state, world) {
   setText('kills', String(world.kills));
   setText('wave', String(world.wave));
   // RD-03D lock is firmware-reported (EVT RADAR); the lock is a GIANT. HP and
-  // cannon readiness are firmware too (EVT GIANT, charge 10/10 in Battle).
+  // cannon readiness are firmware too (EVT GIANT, charge 50/50 in Battle).
   const rd = state.radar;
   const hp = state.giant?.hp ?? 2;
   const hpLeft = Math.max(0, hp - (state.giant?.hits ?? 0));
-  const cannonReady = state.mode === 'BATTLE_MODE' && state.charge >= 10;
+  const cannonReady = state.mode === 'BATTLE_MODE' && state.charge >= 50;
   const radarLine =
     rd && rd.lock && rd.az != null
       ? `GIANT ${'█'.repeat(hpLeft)}${'░'.repeat(hp - hpLeft)} ${rd.az > 0 ? '+' : ''}${rd.az.toFixed(1)}° · ${
           rd.rangeMm != null ? (rd.rangeMm / 1000).toFixed(1) : '?'
-        } m · ${rd.laser ? 'CANNON FIRING' : cannonReady ? 'CANNON READY · HOLD TO FIRE' : state.mode === 'BATTLE_MODE' ? 'CANNON NEEDS 10/10' : 'TRACKING'}`
+        } m · ${rd.laser ? 'CANNON FIRING' : cannonReady ? 'CANNON READY · HOLD TO FIRE' : state.mode === 'BATTLE_MODE' ? 'CANNON NEEDS 50/50' : 'TRACKING'}`
       : null;
   setText(
     'nearest',

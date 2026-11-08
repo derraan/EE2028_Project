@@ -300,7 +300,7 @@ uint8_t Enhancements_CannonReady(void)
                          : 0U);
 }
 
-/* One cannon shot (main.c already spent the 10/10): open the laser beam on
+/* One cannon shot (main.c already spent the full charge): open the laser beam on
  * the locked giant and count the hit. */
 static void Cannon_OnFired(uint32_t now_ms)
 {
@@ -325,7 +325,7 @@ static void Cannon_OnFired(uint32_t now_ms)
         Telemetry_Printf("GIANT DOWN! The giant collapses.");
         Telemetry_EvtGiantDown();
     } else {
-        Telemetry_Printf("Giant hit! (%u/%u) - recharge to 10/10 to finish it.",
+        Telemetry_Printf("Giant hit! (%u/%u) - recharge to 50/50 to finish it.",
                          (unsigned)s_ee.giant_hits, (unsigned)EE_GIANT_HP);
         Telemetry_EvtGiantHit(s_ee.giant_hits, (uint8_t)EE_GIANT_HP);
     }

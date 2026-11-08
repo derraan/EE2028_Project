@@ -29,8 +29,8 @@ A good capture should include most of:
 ```text
 EVT MODE=STANDBY_MODE
 EVT MODE=BATTLE_MODE
-EVT CHARGE=n/10
-EVT FIRE charge=n/10
+EVT CHARGE=n/50
+EVT FIRE charge=n/50
 EVT MODE=THE_LAST_OF_2028
 EVT ATTACK
 EVT COUNTDOWN remaining_ms=N

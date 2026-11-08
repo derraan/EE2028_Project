@@ -10,12 +10,15 @@
  * Rules mirrored from main.c (keep in sync when the firmware changes):
  *  - PB: 500 ms double-press window, hold ≥500 ms latches full-auto fire.
  *  - Standby: telemetry every 1 s; T/A/G trip → Battle; single press ignored.
- *  - Battle: single press +3 charge (cap 10) only while charge < 5;
- *    hold fires every 500 ms, −5 per shot, needs ≥5/10.
+ *  - Charge is the official 0..50 scale (starts full): +3 per short press,
+ *    fire needs ≥25, −5 per shot.
+ *  - Battle: while charge < 50 every short press recharges at once (no
+ *    double-press window); at 50/50 short presses use the 500 ms window and a
+ *    double press returns to Standby (refused unless fully charged).
+ *    Hold fires every 500 ms, −5 per shot, needs ≥25/50.
  *  - Giant cannon (enhanced build): while the radar has a giant locked and
- *    charge is 10/10, the hold fires the cannon instead (−10, EVT CANNON);
- *    the radar mirror counts giant hits (EVT GIANT hit=1/2 → down). With a
- *    giant locked, single press keeps charging +3 past 5 up to 10/10.
+ *    charge is 50/50, the hold fires the cannon instead (−50, EVT CANNON);
+ *    the radar mirror counts giant hits (EVT GIANT hit=1/2 → down).
  *  - Upside-down (accel z < −4) in Standby/Battle → THE_LAST_OF_2028.
  *  - THE_LAST_OF_2028: ATTACK + COUNTDOWN every 1 s; upright double-press
  *    rescues to Battle; 5 failed upside-down rescues or 10 s → self-destruct.
@@ -36,7 +39,11 @@ export const SIM = Object.freeze({
   RESCUE_TIMEOUT_MS: 10000,
   RESCUE_ATTEMPT_LIMIT: 5,
   TERMINATE_DELAY_MS: 1000,
-  CANNON_COST: 10, // CANNON_CHARGE_COST in main.c
+  CHARGE_MAX: 50, // LASER_CHARGE_MAX in main.c
+  CHARGE_STEP: 3, // LASER_CHARGE_STEP
+  FIRE_MIN: 25, // LASER_FIRE_MIN
+  SHOT_COST: 5, // LASER_SHOT_COST
+  CANNON_COST: 50, // CANNON_CHARGE_COST in main.c (= LASER_CHARGE_MAX)
 });
 
 const STANDBY = 'STANDBY_MODE';
@@ -58,7 +65,7 @@ export function createVirtualBoard(emit) {
     radar.reset(now);
     s = {
       state: STANDBY,
-      charge: 0,
+      charge: SIM.CHARGE_MAX,
       upsideDown: false,
       tripPending: false,
       // PB
@@ -96,9 +103,9 @@ export function createVirtualBoard(emit) {
     if (s.started) return;
     s.started = true;
     s.telemetryAt = now;
-    emit(`Drone initialized: Entering STANDBY MODE (Laser Charge: ${s.charge}/10)`);
+    emit(`Drone initialized: Entering STANDBY MODE (Laser Charge: ${s.charge}/${SIM.CHARGE_MAX})`);
     emit('EVT MODE=STANDBY_MODE');
-    emit(`EVT CHARGE=${s.charge}/10`);
+    emit(`EVT CHARGE=${s.charge}/${SIM.CHARGE_MAX}`);
   }
 
   function enterLast(now) {
@@ -125,13 +132,19 @@ export function createVirtualBoard(emit) {
   function onDouble(now) {
     if (s.state === STANDBY) {
       s.state = BATTLE;
-      emit(`PB Double Press (Standby) -> Entering BATTLE MODE. (Laser Charge: ${s.charge}/10)`);
+      emit(`PB Double Press (Standby) -> Entering BATTLE MODE. (Laser Charge: ${s.charge}/${SIM.CHARGE_MAX})`);
       emit('EVT MODE=BATTLE_MODE');
     } else if (s.state === BATTLE) {
-      s.state = STANDBY;
-      s.telemetryAt = now;
-      emit(`PB Double Press (Battle) -> Returning to STANDBY MODE. (Laser Charge: ${s.charge}/10)`);
-      emit('EVT MODE=STANDBY_MODE');
+      if (s.charge >= SIM.CHARGE_MAX) {
+        s.state = STANDBY;
+        s.telemetryAt = now;
+        emit(`PB Double Press (Battle) -> Returning to STANDBY MODE. (Laser Charge: ${s.charge}/${SIM.CHARGE_MAX})`);
+        emit('EVT MODE=STANDBY_MODE');
+      } else {
+        emit(
+          `Laser must be fully charged (${SIM.CHARGE_MAX}/${SIM.CHARGE_MAX}) before returning to standby mode! Current charge: ${s.charge}/${SIM.CHARGE_MAX}`
+        );
+      }
     } else if (s.state === LAST) {
       s.rescueAttempts += 1;
       emit(`Rescue attempt ${s.rescueAttempts}/5 (Double Press detected)...`);
@@ -153,19 +166,18 @@ export function createVirtualBoard(emit) {
 
   function onSingle() {
     if (s.state !== BATTLE) return;
-    if (s.charge < 5) {
-      s.charge = Math.min(10, s.charge + 3);
-      emit(`Laser recharging... Current charge: ${s.charge}/10`);
-      emit(`EVT CHARGE=${s.charge}/10`);
-    } else if (s.charge < SIM.CANNON_COST && radar.cannonReady()) {
-      // Giant locked: keep charging past 5 so the cannon can reach 10/10.
-      s.charge = Math.min(10, s.charge + 3);
-      emit(`Cannon charging... Current charge: ${s.charge}/10${s.charge >= SIM.CANNON_COST ? ' - GIANT CANNON READY, hold to fire!' : ''}`);
-      emit(`EVT CHARGE=${s.charge}/10`);
-    } else {
+    if (s.charge >= SIM.CHARGE_MAX) return;
+    const wasReady = s.charge >= SIM.FIRE_MIN;
+    s.charge = Math.min(SIM.CHARGE_MAX, s.charge + SIM.CHARGE_STEP);
+    emit(`Laser recharging... Current charge: ${s.charge}/${SIM.CHARGE_MAX}`);
+    emit(`EVT CHARGE=${s.charge}/${SIM.CHARGE_MAX}`);
+    if (!wasReady && s.charge >= SIM.FIRE_MIN) {
       emit(
-        'Laser charge is already sufficient (>=5/10). Hold button >500ms to fire! Or double-press within 500ms to return to standby mode'
+        `Laser ready to fire (${s.charge}/${SIM.CHARGE_MAX}). Hold button >500ms to fire, or keep charging up to ${SIM.CHARGE_MAX} to return to Standby Mode.`
       );
+    }
+    if (s.charge >= SIM.CANNON_COST && radar.cannonReady()) {
+      emit(`GIANT CANNON READY (${s.charge}/${SIM.CHARGE_MAX}), hold to fire!`);
     }
   }
 
@@ -197,7 +209,7 @@ export function createVirtualBoard(emit) {
           s.tripPending = false;
           s.state = BATTLE;
           s.singleDeadline = null;
-          emit(`Critical T/A/G threshold violated -> Entering BATTLE MODE. (Laser Charge: ${s.charge}/10)`);
+          emit(`Critical T/A/G threshold violated -> Entering BATTLE MODE. (Laser Charge: ${s.charge}/${SIM.CHARGE_MAX})`);
           emit('EVT MODE=BATTLE_MODE');
           break;
         }
@@ -209,6 +221,8 @@ export function createVirtualBoard(emit) {
               `Accel:[${v.a.map(f1).join(', ')}] m/s^2 | Gyro:[${v.g.map(f1).join(', ')}] dps | ` +
               `Magneto:[${v.m.map(f1).join(', ')}] mgauss`
           );
+          const magMag = Math.hypot(...v.m);
+          emit(`Heading -> Magneto Mag:${magMag.toFixed(2)} mgauss | Roll:0.00 deg, Pitch:0.00 deg, Yaw:0 deg (North)`);
         }
         break;
       }
@@ -220,28 +234,31 @@ export function createVirtualBoard(emit) {
         }
         if (s.holdLatched && s.down) {
           if (s.charge >= SIM.CANNON_COST && radar.cannonReady()) {
-            // Giant cannon: a radar-locked giant + full 10/10 → the hold fires the cannon.
+            // Giant cannon: a radar-locked giant + full charge → the hold fires the cannon.
             if (now - s.lastFireAt >= SIM.FIRE_PERIOD_MS) {
               s.lastFireAt = now;
               s.charge -= SIM.CANNON_COST;
-              emit(`GIANT CANNON FIRED! KA-BOOM! (Remaining charge: ${s.charge}/10)`);
-              emit(`EVT CANNON charge=${s.charge}/10`);
+              emit(`GIANT CANNON FIRED! KA-BOOM! (Remaining charge: ${s.charge}/${SIM.CHARGE_MAX})`);
+              emit(`EVT CANNON charge=${s.charge}/${SIM.CHARGE_MAX}`);
               radar.cannon(now); // Enhancements_OnEvent(DRONE_EVENT_CANNON_FIRED)
-              emit(`Laser charge too low (${s.charge}/10) to fire! Please single-press to recharge the laser gun.`);
-              s.lowChargeWarned = true;
+              s.lowChargeWarned = true; // spent on purpose: no "too low" nag
             }
-          } else if (s.charge < 5) {
+          } else if (s.charge < SIM.FIRE_MIN) {
             if (!s.lowChargeWarned) {
-              emit(`Laser charge too low (${s.charge}/10) to fire! Please single-press to recharge the laser gun.`);
+              emit(
+                `Laser charge too low (${s.charge}/${SIM.CHARGE_MAX}) to fire! Need at least ${SIM.FIRE_MIN}. Please single-press to recharge the laser gun.`
+              );
               s.lowChargeWarned = true;
             }
           } else if (now - s.lastFireAt >= SIM.FIRE_PERIOD_MS) {
             s.lastFireAt = now;
-            s.charge -= 5;
-            emit(`Laser gun fired continuously! PEW PEW! (Remaining charge: ${s.charge}/10)`);
-            emit(`EVT FIRE charge=${s.charge}/10`);
-            if (s.charge < 5) {
-              emit(`Laser charge too low (${s.charge}/10) to fire! Please single-press to recharge the laser gun.`);
+            s.charge -= SIM.SHOT_COST;
+            emit(`Laser gun fired continuously! PEW PEW! (Remaining charge: ${s.charge}/${SIM.CHARGE_MAX})`);
+            emit(`EVT FIRE charge=${s.charge}/${SIM.CHARGE_MAX}`);
+            if (s.charge < SIM.FIRE_MIN) {
+              emit(
+                `Laser charge too low (${s.charge}/${SIM.CHARGE_MAX}) to fire! Need at least ${SIM.FIRE_MIN}. Please single-press to recharge the laser gun.`
+              );
               s.lowChargeWarned = true;
             }
           }
@@ -298,7 +315,12 @@ export function createVirtualBoard(emit) {
       return; // a hold is never a single/double press
     }
     if (s.state === SD_TRIGGERED || s.state === SD_DEAD) return;
-    if (s.lastShortReleaseAt !== null && now - s.lastShortReleaseAt <= SIM.DOUBLE_PRESS_MS) {
+    if (s.state === BATTLE && s.charge < SIM.CHARGE_MAX) {
+      // Charging: every short press acts at once (no double-press window).
+      s.lastShortReleaseAt = null;
+      s.singleDeadline = null;
+      onSingle();
+    } else if (s.lastShortReleaseAt !== null && now - s.lastShortReleaseAt <= SIM.DOUBLE_PRESS_MS) {
       s.lastShortReleaseAt = null;
       s.singleDeadline = null;
       onDouble(now);

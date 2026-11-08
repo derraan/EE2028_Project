@@ -79,23 +79,23 @@ void Telemetry_EvtMode(const char *mode_tag)
 	Telemetry_WriteLine(buf);
 }
 
-void Telemetry_EvtCharge(uint8_t charge_tenths)
+void Telemetry_EvtCharge(uint8_t charge_units)
 {
 	char buf[64];
-	if (charge_tenths > 10U) {
-		charge_tenths = 10U;
+	if (charge_units > EVT_CHARGE_MAX) {
+		charge_units = EVT_CHARGE_MAX;
 	}
-	(void)snprintf(buf, sizeof(buf), "EVT CHARGE=%u/10", (unsigned)charge_tenths);
+	(void)snprintf(buf, sizeof(buf), "EVT CHARGE=%u/%u", (unsigned)charge_units, (unsigned)EVT_CHARGE_MAX);
 	Telemetry_WriteLine(buf);
 }
 
 void Telemetry_EvtFire(uint8_t charge_after_shot)
 {
 	char buf[64];
-	if (charge_after_shot > 10U) {
-		charge_after_shot = 10U;
+	if (charge_after_shot > EVT_CHARGE_MAX) {
+		charge_after_shot = EVT_CHARGE_MAX;
 	}
-	(void)snprintf(buf, sizeof(buf), "EVT FIRE charge=%u/10", (unsigned)charge_after_shot);
+	(void)snprintf(buf, sizeof(buf), "EVT FIRE charge=%u/%u", (unsigned)charge_after_shot, (unsigned)EVT_CHARGE_MAX);
 	Telemetry_WriteLine(buf);
 }
 
@@ -170,10 +170,10 @@ void Telemetry_EvtRadarLost(void)
 void Telemetry_EvtCannon(uint8_t charge_after_shot)
 {
 	char buf[64];
-	if (charge_after_shot > 10U) {
-		charge_after_shot = 10U;
+	if (charge_after_shot > EVT_CHARGE_MAX) {
+		charge_after_shot = EVT_CHARGE_MAX;
 	}
-	(void)snprintf(buf, sizeof(buf), "EVT CANNON charge=%u/10", (unsigned)charge_after_shot);
+	(void)snprintf(buf, sizeof(buf), "EVT CANNON charge=%u/%u", (unsigned)charge_after_shot, (unsigned)EVT_CHARGE_MAX);
 	Telemetry_WriteLine(buf);
 }
 

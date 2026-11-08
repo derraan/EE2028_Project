@@ -74,40 +74,46 @@ function rig() {
   assert(r.s.telemetry.T != null && r.s.telemetryAt != null, 'standby telemetry parsed');
   assert(r.s.telemetry.Accel[2] > 9, 'upright accel z positive');
   r.single();
-  assert(r.s.mode === 'STANDBY_MODE' && r.s.charge === 0, 'single press ignored in Standby');
+  assert(r.s.mode === 'STANDBY_MODE' && r.s.charge === 50, 'single press ignored in Standby (charge stays 50/50)');
 }
 
-// Battle: charge, hold-to-fire, no auto-fire
+// Battle: 0..50 charge, hold-to-fire, immediate recharge, double press only when full
 {
   const r = rig();
+  assert(r.s.charge === 50, `boot charge is 50/50, got ${r.s.charge}`);
   r.double();
   assert(r.s.mode === 'BATTLE_MODE', `double → battle, got ${r.s.mode}`);
   r.single();
-  assert(r.s.charge === 3 && !r.s.armed, `charge 3, got ${r.s.charge}`);
-  r.single();
-  assert(r.s.charge === 6 && r.s.armed, `charge 6 armed, got ${r.s.charge}`);
-  assert(r.s.fireSeq === 0, 'reaching 5/10 must not auto-fire');
-  r.single();
-  assert(r.s.charge === 6, 'single press at ≥5 does not add charge');
-  assert(r.lines.some((l) => /already sufficient/.test(l)), 'sufficient-charge hint printed');
+  assert(r.s.charge === 50, 'single press at 50/50 changes nothing');
   r.hold(SIM.HOLD_MS + 100);
-  assert(r.s.fireSeq === 1 && r.s.charge === 1, `hold fires once → 1/10, got seq=${r.s.fireSeq} charge=${r.s.charge}`);
+  assert(r.s.fireSeq === 1 && r.s.charge === 45, `hold fires once → 45/50, got seq=${r.s.fireSeq} charge=${r.s.charge}`);
   assert(r.s.mode === 'BATTLE_MODE', 'hold is not a double press');
+  // Keep holding: full-auto down to 20/50 (< 25 cannot fire)
+  r.hold(SIM.HOLD_MS + SIM.FIRE_PERIOD_MS * 6);
+  assert(r.s.charge === 20, `full-auto stops below 25, got ${r.s.charge}`);
+  assert(r.lines.some((l) => /charge too low \(20\/50\).*at least 25/.test(l)), 'low-charge warning printed');
+  const shots = r.s.fireSeq;
   r.hold(SIM.HOLD_MS + 100);
-  assert(r.s.fireSeq === 1, 'cannot fire below 5/10');
-  assert(r.lines.some((l) => /charge too low \(1\/10\)/.test(l)), 'low-charge warning printed');
+  assert(r.s.fireSeq === shots, 'cannot fire below 25/50');
+  // Recharge: every short press acts at once (+3), armed from 25
+  r.tap();
+  assert(r.s.charge === 23 && !r.s.armed, `immediate +3 → 23, got ${r.s.charge}`);
+  r.tap();
+  assert(r.s.charge === 26 && r.s.armed, `26 armed, got ${r.s.charge}`);
+  assert(r.lines.some((l) => /Laser ready to fire \(26\/50\)/.test(l)), 'ready-to-fire hint printed');
+  assert(r.s.fireSeq === shots, 'reaching 25 must not auto-fire');
+  while (r.s.charge < 50) r.tap();
+  assert(r.s.charge === 50, `charges up to the cap, got ${r.s.charge}`);
   r.double();
-  assert(r.s.mode === 'STANDBY_MODE', 'double → standby');
+  assert(r.s.mode === 'STANDBY_MODE', 'double at 50/50 → standby');
 }
 
 // Full-auto: holding long fires repeatedly while charge allows
 {
   const r = rig();
   r.double();
-  for (let i = 0; i < 4; i++) r.single(); // 3,6 then "sufficient" x2 → 6
-  r.single();
-  r.hold(SIM.HOLD_MS + SIM.FIRE_PERIOD_MS * 3);
-  assert(r.s.fireSeq === 1 && r.s.charge === 1, `6/10 allows exactly one shot, got ${r.s.fireSeq}`);
+  r.hold(SIM.HOLD_MS + SIM.FIRE_PERIOD_MS * 3 + 100);
+  assert(r.s.fireSeq >= 3 && r.s.charge === 50 - 5 * r.s.fireSeq, `full-auto fires repeatedly, seq=${r.s.fireSeq} charge=${r.s.charge}`);
 }
 
 // T/A/G disturbance in Standby → Battle
@@ -196,8 +202,7 @@ assert(formatRadarLine({ az: 0.05, range: 500, lock: 1, pan: -7.25, laser: 1, n:
 {
   const r = rig();
   r.double();
-  r.single();
-  r.single(); // 6/10 armed
+  r.hold(SIM.HOLD_MS + 100); // 50 → 45: no longer a full charge
   r.board.setRadarContacts([{ x: -1200, y: 2100 }]); // ~-29.7°
   r.advance(400);
   assert(r.s.radar.lock, 'battle lock');
@@ -205,7 +210,7 @@ assert(formatRadarLine({ az: 0.05, range: 500, lock: 1, pan: -7.25, laser: 1, n:
   assert(Math.abs(r.s.radar.pan - r.s.radar.az) < AIM.ALIGNED_TOL_DEG, `servo on target, ${JSON.stringify(r.s.radar)}`);
   assert(!r.s.radar.laser, 'no aim dot: laser only lights for a cannon beam');
   r.hold(SIM.HOLD_MS + 100);
-  assert(r.s.fireSeq === 1 && r.s.cannonSeq === 0, 'below 10/10 the hold is the laser gun');
+  assert(r.s.fireSeq === 2 && r.s.cannonSeq === 0, 'below 50/50 the hold is the laser gun');
   assert(!r.board.snapshot.radar.laser, 'gun shot does not light the cannon laser');
   r.board.setRadarContacts([]);
   r.advance(RADAR.LOST_TIMEOUT_MS + 100);
@@ -213,7 +218,7 @@ assert(formatRadarLine({ az: 0.05, range: 500, lock: 1, pan: -7.25, laser: 1, n:
   assert(r.s.radarLockSeq === 1, 'one lock so far');
 }
 
-// Giant cannon: overcharge to 10/10 while locked, 2 hits destroy the giant,
+// Giant cannon: needs 50/50 while locked, 2 hits destroy the giant,
 // the lock drops and the same person re-locks as a fresh giant
 {
   const { GIANT } = await load('Command/src/radar_mirror.js');
@@ -222,22 +227,21 @@ assert(formatRadarLine({ az: 0.05, range: 500, lock: 1, pan: -7.25, laser: 1, n:
   r.board.setRadarContacts([{ x: 0, y: 2500 }]);
   r.advance(500);
   assert(r.s.radar.lock, 'giant locked');
-  for (let i = 0; i < 4; i++) r.single(); // 0→3→6 (baseline) →9→10 (overcharge, giant locked)
-  assert(r.s.charge === 10, `overcharge to 10/10 with a giant locked, got ${r.s.charge}`);
-  assert(r.lines.some((l) => /GIANT CANNON READY/.test(l)), 'cannon-ready prompt printed');
+  assert(r.s.charge === 50, `full charge with a giant locked, got ${r.s.charge}`);
 
   r.hold(SIM.HOLD_MS + 100);
-  assert(r.s.cannonSeq === 1 && r.s.fireSeq === 0, `hold at 10/10 + lock fires the cannon, not the gun (cannon=${r.s.cannonSeq} fire=${r.s.fireSeq})`);
-  assert(r.s.charge === 0, `cannon spends all 10, got ${r.s.charge}`);
-  assert(r.lines.includes('EVT CANNON charge=0/10') && r.lines.includes('EVT GIANT hit=1/2'), 'cannon + first hit reported');
+  assert(r.s.cannonSeq === 1 && r.s.fireSeq === 0, `hold at 50/50 + lock fires the cannon, not the gun (cannon=${r.s.cannonSeq} fire=${r.s.fireSeq})`);
+  assert(r.s.charge === 0, `cannon spends all 50, got ${r.s.charge}`);
+  assert(r.lines.includes('EVT CANNON charge=0/50') && r.lines.includes('EVT GIANT hit=1/2'), 'cannon + first hit reported');
   assert(r.s.giant.hits === 1 && r.s.giantKills === 0, 'giant survives the first hit');
   r.advance(RADAR.EVT_PERIOD_MS + 20);
   assert(r.s.radar.laser, 'cannon beam lights the laser on the giant');
   r.advance(GIANT.BEAM_MS);
   assert(!r.board.snapshot.radar.laser, 'beam ends after GIANT.BEAM_MS');
 
-  for (let i = 0; i < 4; i++) r.single(); // 0→3→6→9→10
-  assert(r.s.charge === 10, `recharged to 10/10, got ${r.s.charge}`);
+  while (r.s.charge < 50) r.tap(); // 0 → 50 in +3 steps
+  assert(r.s.charge === 50, `recharged to 50/50, got ${r.s.charge}`);
+  assert(r.lines.some((l) => /GIANT CANNON READY/.test(l)), 'cannon-ready prompt printed');
   r.hold(SIM.HOLD_MS + 100);
   assert(r.lines.includes('EVT GIANT down') && r.s.giantKills === 1 && r.s.giant.hits === 0, 'second hit destroys the giant');
   const locks = r.s.radarLockSeq;
@@ -245,13 +249,12 @@ assert(formatRadarLine({ az: 0.05, range: 500, lock: 1, pan: -7.25, laser: 1, n:
   assert(r.lines.filter((l) => l === 'EVT RADAR lost').length >= 1, 'lock dropped after the giant falls');
   assert(r.s.radarLockSeq === locks + 1, `same person re-locks as a new giant, locks ${locks} → ${r.s.radarLockSeq}`);
 
-  // No giant: the baseline recharge rule is untouched.
+  // No giant: the cannon is unavailable; a full charge is plain gun ammo.
   r.board.setRadarContacts([]);
   r.advance(RADAR.LOST_TIMEOUT_MS + 100);
-  r.single();
-  r.single(); // 0→3→6
-  r.single();
-  assert(r.s.charge === 6 && r.lines.at(-1).includes('already sufficient'), `no giant: still stops at ≥5, got ${r.s.charge}`);
+  while (r.s.charge < 50) r.tap();
+  r.hold(SIM.HOLD_MS + 100);
+  assert(r.s.cannonSeq === 2 && r.s.charge === 45, `no giant: hold fires the gun, got cannon=${r.s.cannonSeq} charge=${r.s.charge}`);
 }
 
 // Out of FOV / too close / too far are ignored; a nearer zombie steals the lock
