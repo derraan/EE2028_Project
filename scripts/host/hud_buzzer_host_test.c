@@ -195,6 +195,20 @@ static void FakeLaser(void *ctx, uint8_t on)
     s_laser_on = (on != 0U) ? 1U : 0U;
 }
 
+/* CAP_EXPLODE relay output (D4): level + number of LOW→HIGH edges. */
+static uint8_t s_relay_level;
+static int s_relay_rises;
+
+static void FakeRelay(void *ctx, uint8_t high)
+{
+    (void)ctx;
+    high = (high != 0U) ? 1U : 0U;
+    if ((high != 0U) && (s_relay_level == 0U)) {
+        s_relay_rises++;
+    }
+    s_relay_level = high;
+}
+
 /* RD-03D target encoding: sign bit set = positive. */
 static void EncSigned(int v, uint8_t *lo, uint8_t *hi)
 {
@@ -239,6 +253,8 @@ static void Boot(void)
     static Buzzer_Backend_t buzz;
     static RD03D_Transport_t radar;
     static Laser_Backend_t laser;
+    static Relay_Backend_t relay;
+    static Relay_Config_t relay_cfg;
     Enhancements_Config_t cfg;
 
     memset(&cfg, 0, sizeof(cfg));
@@ -265,7 +281,17 @@ static void Boot(void)
     cfg.buzzer = &buzz;
     cfg.radar = &radar;
     cfg.laser = &laser;
+    /* Same relay setup as enhancements_hw.c: latched HIGH at the boom. */
+    s_relay_level = 1U; /* prove Init drives it LOW */
+    s_relay_rises = 0;
+    relay.set_output = FakeRelay;
+    relay.ctx = NULL;
+    relay_cfg.pulse_ms = 0U;
+    cfg.relay = &relay;
+    cfg.relay_cfg = &relay_cfg;
     Enhancements_Init(&cfg);
+    CHECK(s_relay_level == 0U, "relay driven LOW at init (no startup glitch)");
+    s_relay_rises = 0;
 
     memset(&s_st, 0, sizeof(s_st));
     s_st.mode = STANDBY_MODE;
@@ -420,6 +446,7 @@ static void Test_RescueFailThenRescued(void)
           (unsigned)OnTime(t0, t0 + 800U));
     Tick(2000U, 10U);
     CHECK(Beeps(t0 + 800U, g_now) == 0, "no countdown beeps after rescue");
+    CHECK(s_relay_level == 0U && s_relay_rises == 0, "rescue before 0 keeps the relay LOW");
 }
 
 static void Test_SelfDestructEffects(void)
@@ -430,14 +457,19 @@ static void Test_SelfDestructEffects(void)
     s_st.mode = THE_LAST_OF_2028;
     s_last_entry = g_now;
     Tick(10000U, 10U);
+    CHECK(s_relay_level == 0U && s_relay_rises == 0, "relay LOW through the whole countdown");
     s_st.mode = SELF_DESTRUCT_TRIGGERED;
     Enhancements_OnEvent(DRONE_EVENT_SELF_DESTRUCT_STARTED, g_now);
+    CHECK(s_relay_level == 1U && s_relay_rises == 1, "relay goes HIGH at self-destruct");
+    Enhancements_OnEvent(DRONE_EVENT_SELF_DESTRUCT_STARTED, g_now); /* timeout + 5th rescue both call it */
     Tick(100U, 10U);
     CHECK(!FrameIs(0x00U), "explosion frames should show first");
     Tick(1600U, 10U);
     CHECK(Enhancements_FinalEffectsDone(g_now) == 1U, "final effects should finish");
     CHECK(FrameIs(0x00U), "matrix blank after explosion");
     CHECK(s_buzz_on == 0U, "buzzer silent after final burst");
+    Enhancements_Shutdown(); /* main.c's last call before the halt loop */
+    CHECK(s_relay_level == 1U && s_relay_rises == 1, "relay latched HIGH, fired exactly once, after shutdown");
 }
 
 /* Status display directly: radar priority + styles (the adapter only feeds
