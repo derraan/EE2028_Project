@@ -56,8 +56,8 @@ for (const seed of [1, 7, 42, 1234]) {
   const tag = `[seed ${seed}]`;
   assert(s.telemetry.T === 26.4 && s.telemetry.P === 1008.2 && s.telemetry.H === 55,
     `${tag} sensor T/P/H parsed, got ${s.telemetry.T}/${s.telemetry.P}/${s.telemetry.H}`);
-  assert(s.telemetry.Accel[2] === 9.8 && s.telemetry.Magneto[2] === 380,
-    `${tag} sensor vectors parsed`);
+  assert(s.telemetry.Accel[2] === 9.8 && s.telemetry.Magneto === 401.03,
+    `${tag} sensor Accel XYZ + Magneto magnitude parsed`);
   assert(s.fireSeq === 2, `${tag} two shots, fireSeq=${s.fireSeq}`);
   assert(s.charge === 3, `${tag} charge after recharge = 3, got ${s.charge}`);
   assert(s.radarLockSeq === 2, `${tag} two radar locks (zombie era + giant), got ${s.radarLockSeq}`);

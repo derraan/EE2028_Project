@@ -61,7 +61,8 @@ void Telemetry_Printf(const char *fmt, ...);
 /** Laser charge scale shared with main.c (official 0..50 requirement). */
 #define EVT_CHARGE_MAX 50U
 
-/** PR #3 sensor layout (Standby nominal path). Vectors keep axis order X,Y,Z. */
+/** PR #3 sensor layout (Standby nominal path). Accel/Gyro print X,Y,Z;
+ *  Magneto prints vector magnitude only (no XYZ). All floats use %.2f. */
 void Telemetry_SendSensors(float t_c, float p_hpa, float h_pct,
                            const float accel_mps2[3],
                            const float gyro_dps[3],

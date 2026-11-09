@@ -32,17 +32,17 @@ const SENSORS = [
   ['H', 'Humidity', (t) => fmt(t.H, t.units.H), (t) => t.H],
   ['A', 'Accel', (t) => vec(t.Accel, t.units.Accel), (t) => mag(t.Accel)],
   ['G', 'Gyro', (t) => vec(t.Gyro, t.units.Gyro), (t) => mag(t.Gyro)],
-  ['M', 'Magneto', (t) => vec(t.Magneto, t.units.Magneto), (t) => mag(t.Magneto)],
+  ['M', 'Magneto', (t) => fmt(t.Magneto, t.units.Magneto), (t) => t.Magneto],
 ];
 const HISTORY = 40;
 const history = Object.fromEntries(SENSORS.map(([k]) => [k, []]));
 
 function fmt(n, unit) {
-  return n == null ? '—' : `${Number(n).toFixed(1)} ${unit}`;
+  return n == null ? '—' : `${Number(n).toFixed(2)} ${unit}`;
 }
 function vec(v, unit) {
   if (!v || v[0] == null) return '—';
-  return `${v.map((n) => Number(n).toFixed(1)).join(', ')} ${unit}`;
+  return `${v.map((n) => Number(n).toFixed(2)).join(', ')} ${unit}`;
 }
 function mag(v) {
   return v && v[0] != null ? Math.hypot(v[0], v[1], v[2]) : null;

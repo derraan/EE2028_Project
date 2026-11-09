@@ -1,0 +1,26 @@
+---
+description: Magnetometer mission telemetry reports magnitude only — never XYZ
+alwaysApply: true
+---
+
+# Magnetometer telemetry = magnitude only
+
+On the human-readable `Telemetry ->` sensor line, the magnetometer field is the **vector magnitude** in mgauss. It must **not** print the raw 3-axis vector.
+
+## Required
+
+| Surface | Correct | Forbidden |
+|---------|---------|-----------|
+| `Telemetry_SendSensors` | `Magneto:%.2f mgauss` from `sqrtf(x²+y²+z²)` | `Magneto:[%.2f, %.2f, %.2f] mgauss` |
+| VESPER virtual board (`Command/src/sim.js`) | `Magneto:${mag.toFixed(2)} mgauss` | `Magneto:[x, y, z] mgauss` |
+| VESPER HUD (`bindings.js`) | scalar `fmt(t.Magneto, …)` | `vec(t.Magneto, …)` |
+| Parser state | `telemetry.Magneto` is a number (magnitude) | Mag as `[x, y, z]` for new lines |
+| Contract / fixtures | `Magneto:55.22 mgauss` | `Magneto:[31.00, 42.00, 18.00] mgauss` |
+
+## Still allowed
+
+- Firmware may keep the XYZ vector internally for heading fusion and threshold checks.
+- Threshold / heading prose that already says magnitude (e.g. `Magnetometer Magnitude:…`, `Heading -> Magneto Mag:…`) stays magnitude-based.
+- The VESPER parser may still **accept** legacy `Magneto:[x, y, z]` lines and reduce them with `hypot` for old fixtures — new emitters must not produce XYZ.
+
+If a diff reintroduces XYZ magnetometer telemetry on the sensor line, restore magnitude-only before finishing.

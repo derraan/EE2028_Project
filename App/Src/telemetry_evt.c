@@ -4,6 +4,7 @@
  */
 #include "telemetry_evt.h"
 
+#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -58,16 +59,23 @@ void Telemetry_SendSensors(float t_c, float p_hpa, float h_pct,
                            const float magneto_mgauss[3])
 {
 	char buf[TELEMETRY_LINE_MAX];
+	float magneto_mag = 0.0f;
+
+	if (magneto_mgauss != NULL) {
+		magneto_mag = sqrtf(magneto_mgauss[0] * magneto_mgauss[0] +
+		                    magneto_mgauss[1] * magneto_mgauss[1] +
+		                    magneto_mgauss[2] * magneto_mgauss[2]);
+	}
 
 	(void)snprintf(buf, sizeof(buf),
-		"Telemetry -> T:%.1f °C, P:%.1f hPa, H:%.1f %% | "
-		"Accel:[%.1f, %.1f, %.1f] m/s^2 | "
-		"Gyro:[%.1f, %.1f, %.1f] dps | "
-		"Magneto:[%.1f, %.1f, %.1f] mgauss",
+		"Telemetry -> T:%.2f °C, P:%.2f hPa, H:%.2f %% | "
+		"Accel:[%.2f, %.2f, %.2f] m/s^2 | "
+		"Gyro:[%.2f, %.2f, %.2f] dps | "
+		"Magneto:%.2f mgauss",
 		(double)t_c, (double)p_hpa, (double)h_pct,
 		(double)accel_mps2[0], (double)accel_mps2[1], (double)accel_mps2[2],
 		(double)gyro_dps[0], (double)gyro_dps[1], (double)gyro_dps[2],
-		(double)magneto_mgauss[0], (double)magneto_mgauss[1], (double)magneto_mgauss[2]);
+		(double)magneto_mag);
 	Telemetry_WriteLine(buf);
 }
 

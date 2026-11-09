@@ -340,7 +340,7 @@ static void Test_QueueFull(void)
     M.client = 1;
     Run(800, 1);
     for (i = 0; i < 200; i++) {
-        WifiLink_Enqueue(&L, "Telemetry -> T:26.4 C, P:1008.2 hPa, H:55.0 % | Accel:[0.1, -0.2, 9.8] m/s^2");
+        WifiLink_Enqueue(&L, "Telemetry -> T:26.40 C, P:1008.20 hPa, H:55.00 % | Accel:[0.10, -0.20, 9.80] m/s^2");
     }
     CHECK(L.q_used <= WIFI_LINK_QUEUE_BYTES && L.dropped_lines > 0, "full queue drops lines (used %u, dropped %u)",
           (unsigned)L.q_used, (unsigned)L.dropped_lines);

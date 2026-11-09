@@ -52,7 +52,7 @@ const LAST = 'THE_LAST_OF_2028';
 const SD_TRIGGERED = 'SELF_DESTRUCT_TRIGGERED';
 const SD_DEAD = 'SELF_DESTRUCT_DEAD';
 
-const f1 = (n) => (Math.abs(n) < 0.05 ? 0 : n).toFixed(1);
+const f2 = (n) => (Math.abs(n) < 0.005 ? 0 : n).toFixed(2);
 
 /**
  * @param {(line: string) => void} emit receives each UART line
@@ -217,9 +217,9 @@ export function createVirtualBoard(emit) {
           s.telemetryAt = now;
           const v = sensors(now);
           emit(
-            `Telemetry -> T:${f1(v.t)} °C, P:${f1(v.p)} hPa, H:${f1(v.h)} % | ` +
-              `Accel:[${v.a.map(f1).join(', ')}] m/s^2 | Gyro:[${v.g.map(f1).join(', ')}] dps | ` +
-              `Magneto:[${v.m.map(f1).join(', ')}] mgauss`
+            `Telemetry -> T:${f2(v.t)} °C, P:${f2(v.p)} hPa, H:${f2(v.h)} % | ` +
+              `Accel:[${v.a.map(f2).join(', ')}] m/s^2 | Gyro:[${v.g.map(f2).join(', ')}] dps | ` +
+              `Magneto:${f2(Math.hypot(...v.m))} mgauss`
           );
           const magMag = Math.hypot(...v.m);
           emit(`Heading -> Magneto Mag:${magMag.toFixed(2)} mgauss | Roll:0.00 deg, Pitch:0.00 deg, Yaw:0 deg (North)`);

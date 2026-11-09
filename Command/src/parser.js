@@ -7,8 +7,10 @@
 export const CHARGE_MAX = 50;
 export const CHARGE_FIRE_MIN = 25;
 
+/* Magneto is magnitude-only (`Magneto:54.12 mgauss`). Legacy XYZ
+ * `Magneto:[x, y, z] mgauss` is still accepted and reduced to hypot. */
 const SENSOR_RE =
-  /^Telemetry\s*->\s*T:([-\d.]+)\s*°?\s*C,\s*P:([-\d.]+)\s*hPa,\s*H:([-\d.]+)\s*%\s*\|\s*Accel:\[([-\d.]+),\s*([-\d.]+),\s*([-\d.]+)\]\s*m\/s\^2\s*\|\s*Gyro:\[([-\d.]+),\s*([-\d.]+),\s*([-\d.]+)\]\s*dps\s*\|\s*Magneto:\[([-\d.]+),\s*([-\d.]+),\s*([-\d.]+)\]\s*mgauss/i;
+  /^Telemetry\s*->\s*T:([-\d.]+)\s*°?\s*C,\s*P:([-\d.]+)\s*hPa,\s*H:([-\d.]+)\s*%\s*\|\s*Accel:\[([-\d.]+),\s*([-\d.]+),\s*([-\d.]+)\]\s*m\/s\^2\s*\|\s*Gyro:\[([-\d.]+),\s*([-\d.]+),\s*([-\d.]+)\]\s*dps\s*\|\s*Magneto:(?:\[([-\d.]+),\s*([-\d.]+),\s*([-\d.]+)\]|([-\d.]+))\s*mgauss/i;
 
 /** EVT NAME  |  EVT NAME=value  |  EVT NAME key=value … */
 const EVT_RE = /^EVT\s+(\w+)\s*(.*)$/i;
@@ -58,7 +60,7 @@ export function createEmptyState() {
       H: null,
       Accel: [null, null, null],
       Gyro: [null, null, null],
-      Magneto: [null, null, null],
+      Magneto: null, /* magnitude mgauss (scalar) */
       units: { ...UNITS },
     },
     thresholds: { ok: true, lines: [] },
@@ -167,7 +169,13 @@ export function parseLine(state, line) {
     state.telemetry.H = Number(sensor[3]);
     state.telemetry.Accel = [Number(sensor[4]), Number(sensor[5]), Number(sensor[6])];
     state.telemetry.Gyro = [Number(sensor[7]), Number(sensor[8]), Number(sensor[9])];
-    state.telemetry.Magneto = [Number(sensor[10]), Number(sensor[11]), Number(sensor[12])];
+    if (sensor[13] != null) {
+      state.telemetry.Magneto = Number(sensor[13]);
+    } else {
+      state.telemetry.Magneto = Math.hypot(
+        Number(sensor[10]), Number(sensor[11]), Number(sensor[12])
+      );
+    }
     state.telemetryAt = Date.now();
     // Resuming normal telemetry implies thresholds cleared unless sticky warn set.
     if (!state.thresholds.ok && state.thresholds.lines.length) {

@@ -16,7 +16,8 @@ Regression: `node scripts/test_vesper_ingest.mjs` builds the real `telemetry_evt
 
 ### Wi-Fi transport
 
-- **Same bytes as UART.** `Telemetry_WriteLine` queues each `<line>
+- **Same bytes as UART.** `Telemetry_WriteLine` queues each `<line>
+
 ` for the Wi-Fi client too (`App/Src/telemetry_wifi.c`). Lines are only queued while a client is connected; older lines are stale.
 - **Board = TCP server** on port 5028 (one client). It announces itself on UART: `Wi-Fi: connected to <ssid>, IP a.b.c.d, telemetry TCP port 5028`.
 - **Snapshot on connect.** When a client connects, `main.c` resends `EVT MODE=…`, `EVT CHARGE=n/50` and, in The Last of EE2028, `EVT COUNTDOWN`, so a late-joining VESPER shows the current state.
@@ -32,8 +33,12 @@ Firmware helpers: [`App/Inc/telemetry_evt.h`](../App/Inc/telemetry_evt.h), [`App
 
 ## 1) Human-readable sensor line (PR #3 layout — keep)
 
+**Precision:** every floating-point field on the `Telemetry ->` sensor line (and threshold / heading floats from `main.c`) prints at **exactly two decimal places** (`%.2f` / `.toFixed(2)`). Do not regress to `%.1f`.
+
+**Magnetometer:** print **magnitude only** (`sqrt(x²+y²+z²)` mgauss). Do not emit the XYZ vector on this line.
+
 ```text
-Telemetry -> T:26.4 °C, P:1012.5 hPa, H:55.1 % | Accel:[0.0, 0.1, 9.8] m/s^2 | Gyro:[0.0, 0.0, 0.2] dps | Magneto:[31.0, 42.0, 18.0] mgauss
+Telemetry -> T:26.40 °C, P:1012.50 hPa, H:55.10 % | Accel:[0.00, 0.10, 9.80] m/s^2 | Gyro:[0.00, 0.00, 0.20] dps | Magneto:55.22 mgauss
 ```
 
 | Field | Unit | Axes |
@@ -43,7 +48,7 @@ Telemetry -> T:26.4 °C, P:1012.5 hPa, H:55.1 % | Accel:[0.0, 0.1, 9.8] m/s^2 | 
 | H | % | scalar |
 | Accel | m/s^2 | X, Y, Z |
 | Gyro | dps | X, Y, Z |
-| Magneto | mgauss | X, Y, Z |
+| Magneto | mgauss | magnitude only (not XYZ) |
 
 Threshold violation lines from PR #3 (e.g. `T:40.10 C, exceeds threshold…`) remain valid; VESPER keeps them in the raw log and threshold panel. When all readings recover, firmware may emit `EVT THRESHOLD_OK` so the dashboard clears a sticky warning.
 
@@ -76,7 +81,7 @@ Threshold violation lines from PR #3 (e.g. `T:40.10 C, exceeds threshold…`) re
 Example stream (plan shape):
 
 ```text
-Telemetry -> T:26.4 °C, P:1012.5 hPa, H:55.1 % | Accel:[0.0, 0.1, 9.8] m/s^2 | Gyro:[0.0, 0.0, 0.2] dps | Magneto:[31.0, 42.0, 18.0] mgauss
+Telemetry -> T:26.40 °C, P:1012.50 hPa, H:55.10 % | Accel:[0.00, 0.10, 9.80] m/s^2 | Gyro:[0.00, 0.00, 0.20] dps | Magneto:55.22 mgauss
 EVT MODE=BATTLE_MODE
 EVT CHARGE=30/50
 EVT FIRE charge=25/50

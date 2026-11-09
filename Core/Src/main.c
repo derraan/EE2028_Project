@@ -109,9 +109,10 @@ _Static_assert(LASER_FIRE_MIN >= LASER_SHOT_COST, "a shot must never take charge
 DroneState_t current_state = STANDBY_MODE;
 
 /*
- * Push button: EXTI captures rising+falling edges; main loop reads GPIO level
- * to confirm press/hold/release and measures the falling→rising duration window.
- * Configure USER button EXTI as rising AND falling (or poll still recovers release).
+ * Push button: EXTI (required) captures rising+falling edges; main loop consumes
+ * the edge stamp and reads GPIO level for press/hold/release classification.
+ * Configure USER button EXTI as rising AND falling (GPIO can still recover release
+ * if the BSP only enables the falling edge).
  */
 volatile uint32_t pb_last_edge_tick = 0;
 volatile bool pb_edge_pending = false;
@@ -634,28 +635,31 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 }
 
 /*
- * Pair EXTI edge stamps with live GPIO level:
- *  - falling / GPIO low  -> press start (start duration window)
+ * EXTI edge stamps + GPIO level (EXTI is required, not optional):
+ *  - ISR debounce + set pb_edge_pending / pb_edge_tick
+ *  - falling / GPIO low  -> press start (timestamp = EXTI tick)
  *  - rising  / GPIO high -> press end   (duration = release - press)
- * Hold: still low after PB_HOLD_MS. Short press: released before PB_HOLD_MS.
- * Battle below full charge: a short press recharges immediately; at full charge
- * short presses use the double-press window (double = back to Standby).
+ * Hold: still low after PB_HOLD_MS (level poll while already down — no new edge).
+ * If Cube only enables one EXTI edge, release can still be recovered from GPIO
+ * once a press was started by EXTI.
  */
 void Process_PushButton(void)
 {
     const bool pressed = (BSP_PB_GetState(BUTTON_USER) == GPIO_PIN_RESET);
     const uint32_t now = HAL_GetTick();
+    bool edge = false;
+    uint32_t edge_tick = now;
 
-    /* Optional: consume EXTI edge stamp (confirms an edge occurred; GPIO decides which) */
     if (pb_edge_pending) {
         pb_edge_pending = false;
-        (void)pb_edge_tick;
+        edge_tick = pb_edge_tick;
+        edge = true;
     }
 
-    /* Press start: GPIO low */
-    if (pressed && !pb_is_down) {
+    /* Press start: EXTI-confirmed edge while GPIO is low (active-low). */
+    if (edge && pressed && !pb_is_down) {
         pb_is_down = true;
-        pb_down_tick = now;
+        pb_down_tick = edge_tick;
         pb_hold_latched = false;
         pb_low_charge_warned = false;
         pb_last_fire_tick = 0;
@@ -673,9 +677,11 @@ void Process_PushButton(void)
         /* Battle fire runs in state machine; other modes ignore hold */
     }
 
-    /* Release: GPIO high — measure falling→rising window */
-    if (!pressed && pb_is_down) {
-        pb_last_press_duration_ms = now - pb_down_tick;
+    /* Release: GPIO high while down. Prefer EXTI timestamp; level recovers
+     * release if Cube only enabled the falling (press) edge. */
+    if (pb_is_down && !pressed) {
+        const uint32_t release_tick = edge ? edge_tick : now;
+        pb_last_press_duration_ms = release_tick - pb_down_tick;
         pb_is_down = false;
 
         if (pb_hold_latched) {

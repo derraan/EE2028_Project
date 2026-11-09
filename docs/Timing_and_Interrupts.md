@@ -75,32 +75,38 @@ These are bounded by the HAL timeouts and use the SysTick counter themselves, wh
 
 ### Inventory
 
-The firmware **uses 3 interrupt requests**, served by **3 IRQ handlers** plus **1 application callback**:
+Up to **4 interrupt requests**, served by **4 IRQ handlers** plus **1 shared application callback** (`HAL_GPIO_EXTI_Callback`):
 
 | # | Source | Vector / handler | Defined in | Priority (lower = more urgent) | When |
 |---|--------|------------------|-----------|-------------------------------|------|
 | 1 | SysTick (1 kHz) | `SysTick_Handler()` → `HAL_IncTick()` | Cube `stm32l4xx_it.c` | 0 (`TICK_INT_PRIORITY`) | always |
 | 2 | USER button, EXTI line 13 (PC13, both edges) | `EXTI15_10_IRQHandler()` → `HAL_GPIO_EXTI_IRQHandler(BUTTON_EXTI13_Pin)` → **`HAL_GPIO_EXTI_Callback()`** | handler: Cube `stm32l4xx_it.c`; callback: `Core/Src/main.c` | 15 (set by `BSP_PB_Init`) | always |
 | 3 | UART4 RX (RD-03D radar) | `UART4_IRQHandler()` → `Enhancements_HW_RadarIrq()` | `App/Src/enhancements_hw.c` | 5 (`EE_RADAR_IRQ_PRIO`) | only with `-DEE_RADAR_AIM=1` |
+| 4 | Wi-Fi DRDY, EXTI line 1 (PE1, rising) | `EXTI1_IRQHandler()` → `HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_1)` → **`HAL_GPIO_EXTI_Callback()`** → `Telemetry_WifiDrdyIsr()` | handler + ISR body: `App/Src/telemetry_wifi.c`; pin dispatch: `Core/Src/main.c` | 6 (`WIFI_IRQ_PRIO`) | only when `App/Inc/wifi_config.h` enables Wi-Fi |
 
-Baseline build (no enhancements): **2** interrupt requests (SysTick, button). Full radar build: **3**.
+Baseline build: **2** (SysTick, button). Radar build: **3**. Radar + Wi-Fi: **4**.
 
 Notes:
 
-- `EXTI15_10_IRQHandler` in the lab project also forwards lines 10, 11, 12, 14 and 15 to the HAL (other on-board pins). Those lines are not enabled by our code, so they never fire; our callback also returns immediately for any pin other than `USER_BUTTON_PIN`. `EXTI9_5_IRQHandler` is likewise unused.
+- `HAL_GPIO_EXTI_Callback` is shared: `GPIO_PIN_1` → Wi-Fi DRDY; `USER_BUTTON_PIN` → button edge stamp; any other pin returns immediately.
+- `EXTI15_10_IRQHandler` in the lab project also forwards lines 10, 11, 12, 14 and 15 to the HAL (other on-board pins). Those lines are not enabled by our code, so they never fire. `EXTI9_5_IRQHandler` is likewise unused.
 - Set `-DEE_RADAR_OWN_IRQ=0` if Cube already defines `UART4_IRQHandler`, and call `Enhancements_HW_RadarIrq()` from it yourself.
 - Everything else is polled: USART1 telemetry TX, I2C sensors and matrix, TIM3 PWM for the servo (no timer interrupt), GPIO outputs for buzzer, relay and laser, and the IR input.
-- Priority grouping is `NVIC_PRIORITYGROUP_4` (16 preemption levels). SysTick (0) can preempt UART4 (5), which can preempt the button (15). The button interrupt is the least urgent on purpose.
+- Priority grouping is `NVIC_PRIORITYGROUP_4` (16 preemption levels). SysTick (0) can preempt UART4 (5) and Wi-Fi DRDY (6), which can preempt the button (15). The button interrupt is the least urgent on purpose.
 
 ### Handler 1: SysTick
 
 `HAL_IncTick()` only. This is the one place the millisecond counter changes.
 
-### Handler 2: button edge (`HAL_GPIO_EXTI_Callback`)
+### Handler 2: button edge (`HAL_GPIO_EXTI_Callback`, `USER_BUTTON_PIN`)
 
 ```c
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
+    if (GPIO_Pin == GPIO_PIN_1) {
+        Telemetry_WifiDrdyIsr(); /* Wi-Fi path — see Handler 4 */
+        return;
+    }
     if (GPIO_Pin != USER_BUTTON_PIN) return;
     uint32_t now = HAL_GetTick();
     if ((now - pb_last_edge_tick) < PB_DEBOUNCE_MS) return;   /* 100 ms */
@@ -111,8 +117,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 ```
 
 - Runs in a few instructions: no printing, no mode change, no I2C or UART.
-- It only stamps an edge. All classification (press, hold, release, single, double) happens in the main loop in `Process_PushButton()`, which reads the real GPIO level. So a missed or bounced edge cannot corrupt the state machine.
-- The shared variables `pb_last_edge_tick`, `pb_edge_pending` and `pb_edge_tick` are `volatile`. (The main loop currently only clears the flag; the GPIO level is the source of truth.)
+- It stamps a debounced edge. `Process_PushButton()` **must consume** that stamp: a new press starts only when `pb_edge_pending` was set and GPIO is low. Hold keeps sampling level while already down. Release prefers the EXTI timestamp and can fall back to GPIO level if Cube enabled only one edge.
+- The shared variables `pb_last_edge_tick`, `pb_edge_pending` and `pb_edge_tick` are `volatile`. Clearing the flag without using it (pure GPIO polling) is not allowed.
 - Interrupt requests handled: one per accepted edge, so 2 per click (press + release), at most one per 100 ms because of the debounce.
 
 ### Handler 3: radar RX (`Enhancements_HW_RadarIrq`)
@@ -123,6 +129,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 - Overrun / noise / framing / parity errors are cleared and counted in `s_rx_errors`.
 - The main loop never touches UART4 registers for receive; `Enhancements_Tick()` parses the ring and, every 5 s, prints `Radar link: rx=… dropped=… uart_err=…`.
 - Request rate: the RD-03D sends about 300 bytes/s (~10 frames/s), so the ISR fires on the order of tens of times per second.
+
+### Handler 4: Wi-Fi DRDY (`EXTI1_IRQHandler` → `Telemetry_WifiDrdyIsr`)
+
+- Enabled only when `Telemetry_WifiInit()` succeeds (`App/Inc/wifi_config.h` present).
+- `EXTI1_IRQHandler` in `telemetry_wifi.c` calls `HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_1)`.
+- `HAL_GPIO_EXTI_Callback` dispatches pin 1 to `Telemetry_WifiDrdyIsr()`, which only sets a volatile “data ready” flag for the non-blocking SPI/AT state machine in `Telemetry_WifiPoll()`.
+- No SPI transfers and no telemetry prints inside the ISR.
 
 ### Rules for adding interrupts
 

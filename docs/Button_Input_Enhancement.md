@@ -86,8 +86,9 @@ No mode changes and no `printf` in the ISR.
 
 ### EXTI rising + falling
 
-- Each qualified edge only **notifies** that the line moved.
-- Classification waits for `Process_PushButton()`, which samples **GPIO level at the same time** as it advances the press/hold/release state.
+- Each qualified edge **notifies** that the line moved (`pb_edge_pending` + `pb_edge_tick`).
+- `Process_PushButton()` **consumes** that notification: press start requires an accepted EXTI edge **and** GPIO low. Hold is level-based while already down. Release uses the EXTI tick when present; GPIO-high while down recovers release if Cube only enabled one edge.
+- Do not clear `pb_edge_pending` and ignore it — that leaves EXTI as a dead stub.
 
 ### GPIO level + duration window
 
@@ -211,3 +212,4 @@ While `pb_hold_latched &&` GPIO still pressed and mode is Battle:
 - [ ] Battle: hold fires; release stops; no recharge on that release  
 - [ ] Last of EE2028: singles ignored; doubles count rescue / fail path  
 - [ ] ISR stays free of `printf` / mode side effects beyond edge stamp  
+- [ ] `Process_PushButton()` starts presses from EXTI edges (not GPIO-only polling) 

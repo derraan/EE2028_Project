@@ -1,0 +1,25 @@
+---
+description: Mission telemetry floats always print at exactly two decimal places
+alwaysApply: true
+---
+
+# Telemetry float precision
+
+Human-readable mission telemetry floats use **exactly two decimal places**.
+
+## Required
+
+| Surface | Correct | Forbidden |
+|---------|---------|-----------|
+| `Telemetry_SendSensors` format | `%.2f` for T/P/H/Accel/Gyro and Magneto **magnitude** | `%.1f`, `%f`, `%.3f`, `%g` |
+| Threshold / heading `Telemetry_Printf` floats | `%.2f` | `%.1f` |
+| VESPER virtual-board sensor lines (`Command/src/sim.js`) | `.toFixed(2)` | `.toFixed(1)` |
+| VESPER HUD sensor formatters (`Command/src/bindings.js` `fmt` / `vec`) | `.toFixed(2)` | `.toFixed(1)` |
+| Contract / fixture examples of `Telemetry ->` | two d.p. (e.g. `26.40`) | one d.p. (e.g. `26.4`) |
+
+## Out of scope
+
+- Integer fields (charge `n/50`, countdown ms, mode tags) stay unscaled integers.
+- `EVT RADAR` `az` / `pan` remain one decimal as documented in the radar contract.
+
+If a diff or fixture regresses sensor-line precision to one decimal place, restore two d.p. before finishing.
