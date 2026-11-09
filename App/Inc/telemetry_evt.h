@@ -33,6 +33,19 @@ extern "C" {
 void Telemetry_UartInit(void);
 
 /**
+ * Wi-Fi telemetry (telemetry_wifi.c): the same lines also stream to one TCP
+ * client on the ISM43362 (port 5028) once App/Inc/wifi_config.h exists.
+ * Non-blocking: call Init once after Telemetry_UartInit(), Poll every main
+ * loop pass. Telemetry_WriteLine feeds Enqueue. TakeNewClient returns 1 once
+ * per new client so main.c can resend a state snapshot.
+ */
+void Telemetry_WifiInit(uint32_t now_ms);
+void Telemetry_WifiPoll(uint32_t now_ms);
+void Telemetry_WifiEnqueue(const char *line);
+uint8_t Telemetry_WifiTakeNewClient(void);
+void Telemetry_WifiDrdyIsr(void); /* EXTI1 (PE1) from HAL_GPIO_EXTI_Callback */
+
+/**
  * Low-level line writer (appends \\r\\n). On the board, telemetry_uart.c sends
  * it to the ST-LINK COM port. The weak default in telemetry_evt.c (printf) is
  * only used by host tests that do not link telemetry_uart.c.
@@ -45,14 +58,18 @@ void Telemetry_WriteLine(const char *line);
  */
 void Telemetry_Printf(const char *fmt, ...);
 
-/** PR #3 sensor layout (Standby nominal path). Vectors keep axis order X,Y,Z. */
+/** Laser charge scale shared with main.c (official 0..50 requirement). */
+#define EVT_CHARGE_MAX 50U
+
+/** PR #3 sensor layout (Standby nominal path). Accel/Gyro print X,Y,Z;
+ *  Magneto prints vector magnitude only (no XYZ). All floats use %.2f. */
 void Telemetry_SendSensors(float t_c, float p_hpa, float h_pct,
                            const float accel_mps2[3],
                            const float gyro_dps[3],
                            const float magneto_mgauss[3]);
 
 void Telemetry_EvtMode(const char *mode_tag);
-void Telemetry_EvtCharge(uint8_t charge_tenths);          /* n/10 after recharge */
+void Telemetry_EvtCharge(uint8_t charge_units);           /* n/50 after recharge */
 void Telemetry_EvtFire(uint8_t charge_after_shot);        /* charge AFTER the shot */
 void Telemetry_EvtCountdown(uint32_t remaining_ms);      /* firmware rescue deadline */
 void Telemetry_EvtSelfDestruct(const char *reason_token);
@@ -71,8 +88,8 @@ void Telemetry_EvtRadar(int16_t az_ddeg, uint16_t range_mm, uint8_t locked,
 void Telemetry_EvtRadarLost(void);                       /* EVT RADAR lost */
 
 /**
- * Giant cannon (radar-locked giant, needs 10/10, uses all 10).
- *   EVT CANNON charge=0/10      — main.c, the shot itself (charge AFTER)
+ * Giant cannon (radar-locked giant, needs at least 10 charge, spends 10 per shot; 2 hits kill a giant).
+ *   EVT CANNON charge=n/50      — main.c, the shot itself (charge AFTER)
  *   EVT GIANT hit=1/2           — adapter, first hit on the locked giant
  *   EVT GIANT down              — adapter, second hit: giant destroyed
  *   EVT GIANT miss              — adapter, lock was lost before the shot landed

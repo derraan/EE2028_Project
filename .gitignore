@@ -1,0 +1,2 @@
+# Wi-Fi credentials (copy App/Inc/wifi_config.example.h → wifi_config.h)
+App/Inc/wifi_config.h

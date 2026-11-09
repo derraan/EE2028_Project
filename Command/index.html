@@ -47,8 +47,8 @@
 
     <section class="card charge-card">
       <h2 class="card-title"><b>//</b> 02 Laser core</h2>
-      <div class="charge-head"><strong id="charge">0<span>/10</span></strong><span id="armed" class="armed">STANDBY</span></div>
-      <div class="charge-meter" id="chargeMeter" role="meter" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0" aria-label="Laser charge">
+      <div class="charge-head"><strong id="charge">0<span>/50</span></strong><span id="armed" class="armed">STANDBY</span></div>
+      <div class="charge-meter" id="chargeMeter" role="meter" aria-valuemin="0" aria-valuemax="50" aria-valuenow="0" aria-label="Laser charge">
         <i id="chargeFill"></i><b class="fire-line" aria-hidden="true"></b>
       </div>
       <div class="meter-legend"><span>0</span><span>FIRE ≥ 5</span><span>10</span></div>
@@ -109,6 +109,14 @@
         <button id="serialDisconnect" class="deck-btn" type="button">Disconnect</button>
         <small id="serialHint">Chrome / Edge · ST-LINK VCP @ 115200 8N1 · unplugging is link loss, not mission end.</small>
       </div>
+      <div class="deck-panel" id="wifiControls" hidden>
+        <label for="wifiHost" class="sr-only">Board IP address</label>
+        <input id="wifiHost" class="deck-input" type="text" inputmode="decimal" placeholder="Board IP, e.g. 172.20.10.5" autocomplete="off" spellcheck="false">
+        <button id="wifiScan" class="deck-btn" type="button">Find board</button>
+        <button id="wifiConnect" class="deck-btn primary" type="button">Connect</button>
+        <button id="wifiDisconnect" class="deck-btn" type="button">Disconnect</button>
+        <small id="wifiHint">Laptop on the same hotspot · run <code>node Command/serve.mjs</code> · the board prints its IP on UART at boot.</small>
+      </div>
       <div class="deck-source">
         <label for="source">Signal source</label>
         <select id="source">
@@ -116,6 +124,7 @@
           <option value="replay">Recorded mission</option>
           <option value="paste">Paste UART log</option>
           <option value="serial">Live board (Web Serial)</option>
+          <option value="wifi">Live board (Wi-Fi)</option>
         </select>
         <small id="freshness">Browser board prints the firmware's UART lines</small>
       </div>
@@ -162,7 +171,7 @@
       <p>Year 6202. Spore pods are falling from orbit onto Singapore, and the infected are converging on <b>NUS E4-03-07</b> — humanity's last laboratory. One defence drone remains. <b>Its controller is the STM32 in your hands.</b></p>
       <ul>
         <li><b>PB</b> double tap — Standby ⇄ Battle</li>
-        <li><b>PB</b> tap — charge +3 · <b>hold ≥ 0.5 s</b> — fire (needs 5/10)</li>
+        <li><b>PB</b> tap — charge +3 · <b>hold ≥ 0.5 s</b> — fire (needs 25/50)</li>
         <li><b>Flip</b> the board — The Last of EE2028 · flip back and double tap to rescue</li>
       </ul>
       <button id="enter" class="deck-btn primary big" type="button">Enter command</button>

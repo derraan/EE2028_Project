@@ -18,6 +18,7 @@ Every module is optional. If one is missing the firmware skips it and the drone 
 | On-board sensors | **PB10** SCL / **PB11** SDA | I2C2 (BSP) | HTS221 (T, H), LPS22HB (P), LSM6DSL (accel, gyro), LIS3MDL (mag) |
 | Telemetry → VESPER / Tera Term | **PB6** TX / **PB7** RX | USART1, AF7 | ST-LINK Virtual COM, **115200 8N1** (`telemetry_uart.c`) |
 | Programming / debug | SWD | ST-LINK | Flash + semihosting (CubeIDE Console only while debugging) |
+| Wi-Fi module (ISM43362) | **PC10** SCK / **PC11** MISO / **PC12** MOSI, **PE0** CSN, **PE1** DRDY, **PE8** RST, **PB13** WAKEUP (BOOT0 PB12 not driven) | SPI3 (AF6), EXTI1 on PE1 | Telemetry over Wi-Fi, TCP 5028 (`telemetry_wifi.c`), only when `App/Inc/wifi_config.h` exists. All internal pins: no conflict with the Arduino header |
 
 No wiring needed: these are on the board. Connect one USB cable to the **ST-LINK** port.
 
@@ -46,7 +47,7 @@ No wiring needed: these are on the board. Connect one USB cable to the **ST-LINK
 | **D3** | PB0 | GPIO in, pull-up | in | Grove IR reflective | — | Active-LOW: detect → log + chirp (no mode change) |
 | **D4** | PA3 | GPIO out | out | Relay module **IN** (`CAP_EXPLODE`) | **LOW** | **HIGH** once at self-destruct, latched until reset (`docs/Relay_Design.md`) |
 | **D5** | PB4 | TIM3_CH1 (AF2) | out | Pan servo **signal** | 1500 µs, then self-test sweep | 50 Hz, 1 µs steps. Tracks the radar lock |
-| **D7** | PA4 | GPIO out, pull-down | out | Laser module via transistor | **LOW (off)** | Lit only for a 1 s **giant-cannon** beam (Battle + lock + 10/10 shot) |
+| **D7** | PA4 | GPIO out, pull-down | out | Laser module via transistor | **LOW (off)** | Lit only for a 1 s **giant-cannon** beam (Battle + lock + cannon shot (≥10 charge)) |
 | **D14** | PB9 | I2C1_SDA (AF4, open-drain) | i/o | Grove LED matrix **SDA** | — | ~100 kHz, address 0x70 |
 | **D15** | PB8 | I2C1_SCL (AF4, open-drain) | out | Grove LED matrix **SCL** | — | |
 

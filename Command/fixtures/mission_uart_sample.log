@@ -4,8 +4,8 @@
 
 Drone initialized: Entering STANDBY MODE (Laser Charge: 0/10)
 EVT MODE=STANDBY_MODE
-Telemetry -> T:26.4 °C, P:1012.5 hPa, H:55.1 % | Accel:[0.0, 0.1, 9.8] m/s^2 | Gyro:[0.0, 0.0, 0.2] dps | Magneto:[31.0, 42.0, 18.0] mgauss
-Telemetry -> T:26.5 °C, P:1012.4 hPa, H:55.0 % | Accel:[0.1, 0.0, 9.7] m/s^2 | Gyro:[0.1, 0.0, 0.1] dps | Magneto:[30.5, 41.8, 18.2] mgauss
+Telemetry -> T:26.40 °C, P:1012.50 hPa, H:55.10 % | Accel:[0.00, 0.10, 9.80] m/s^2 | Gyro:[0.00, 0.00, 0.20] dps | Magneto:55.22 mgauss
+Telemetry -> T:26.50 °C, P:1012.40 hPa, H:55.00 % | Accel:[0.10, 0.00, 9.70] m/s^2 | Gyro:[0.10, 0.00, 0.10] dps | Magneto:54.85 mgauss
 PB Double Press (Standby) -> Entering BATTLE MODE. (Laser Charge: 0/10)
 EVT MODE=BATTLE_MODE
 Laser recharging... Current charge: 3/10

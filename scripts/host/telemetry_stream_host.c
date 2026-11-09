@@ -21,54 +21,52 @@ int main(void)
     const float acc[3] = {0.1f, -0.2f, 9.8f};
     const float gyr[3] = {0.0f, 0.1f, -0.1f};
     const float mag[3] = {120.0f, -45.0f, 380.0f};
-    int charge = 10;
+    int charge = 50;
 
 #ifdef _WIN32
     _setmode(_fileno(stdout), _O_BINARY); /* keep \r\n exactly as on the wire */
 #endif
 
     /* Boot (main.c) */
-    Telemetry_Printf("Drone initialized: Entering STANDBY MODE (Laser Charge: %d/10)", charge);
+    Telemetry_Printf("Drone initialized: Entering STANDBY MODE (Laser Charge: %d/50)", charge);
     Telemetry_EvtMode(EVT_MODE_STANDBY);
     Telemetry_EvtCharge((uint8_t)charge);
     Telemetry_SendSensors(26.4f, 1008.2f, 55.0f, acc, gyr, mag);
     Telemetry_Printf("IR threat detected (enhancement only - no mode change).");
 
     /* Double press → Battle */
-    Telemetry_Printf("PB Double Press (Standby) -> Entering BATTLE MODE. (Laser Charge: %d/10)", charge);
+    Telemetry_Printf("PB Double Press (Standby) -> Entering BATTLE MODE. (Laser Charge: %d/50)", charge);
     Telemetry_EvtMode(EVT_MODE_BATTLE);
 
     /* Radar lock while in Battle (enhancements.c) */
     Telemetry_EvtRadar(-124, 1830U, 1U, -119, 1U, 2U);
 
-    /* Two shots, then recharge */
+    /* Earlier shots drained the gun to 30/50; two more shots, then recharge */
+    charge = 30;
     charge -= 5;
-    Telemetry_Printf("Laser gun fired continuously! PEW PEW! (Remaining charge: %d/10)", charge);
+    Telemetry_Printf("Laser gun fired continuously! PEW PEW! (Remaining charge: %d/50)", charge);
     Telemetry_EvtFire((uint8_t)charge);
     charge -= 5;
-    Telemetry_Printf("Laser gun fired continuously! PEW PEW! (Remaining charge: %d/10)", charge);
+    Telemetry_Printf("Laser gun fired continuously! PEW PEW! (Remaining charge: %d/50)", charge);
     Telemetry_EvtFire((uint8_t)charge);
-    Telemetry_Printf("Laser charge too low (%d/10) to fire! Please single-press to recharge the laser gun.", charge);
+    Telemetry_Printf("Laser charge too low (%d/50) to fire! Need at least 25. Please single-press to recharge the laser gun.", charge);
     charge += 3;
-    Telemetry_Printf("Laser recharging... Current charge: %d/10", charge);
+    Telemetry_Printf("Laser recharging... Current charge: %d/50", charge);
     Telemetry_EvtCharge((uint8_t)charge);
     Telemetry_EvtRadarLost();
 
-    /* Giant cannon: overcharge to 10/10 on a locked giant, two hits (main.c + adapter order) */
+    /* Giant cannon: 10 charge per shot on a locked giant, two hits kill it (main.c + adapter order) */
     Telemetry_EvtRadar(31, 2500U, 1U, 31, 0U, 1U);
-    charge = 10;
-    Telemetry_Printf("Cannon charging... Current charge: %d/10%s", charge, " - GIANT CANNON READY, hold to fire!");
-    Telemetry_EvtCharge((uint8_t)charge);
+    charge = 20;
+    Telemetry_Printf("GIANT CANNON READY (%d/50), hold to fire!", charge);
     charge -= 10;
-    Telemetry_Printf("GIANT CANNON FIRED! KA-BOOM! (Remaining charge: %d/10)", charge);
+    Telemetry_Printf("GIANT CANNON FIRED! KA-BOOM! (Remaining charge: %d/50)", charge);
     Telemetry_EvtCannon((uint8_t)charge);
-    Telemetry_Printf("Giant hit! (%u/%u) - recharge to 10/10 to finish it.", 1U, 2U);
+    Telemetry_Printf("Giant hit! (%u/%u) - fire again (10 charge) to finish it.", 1U, 2U);
     Telemetry_EvtGiantHit(1U, 2U);
     Telemetry_EvtRadar(31, 2500U, 1U, 31, 1U, 1U); /* beam on */
-    charge = 10;
-    Telemetry_EvtCharge((uint8_t)charge);
     charge -= 10;
-    Telemetry_Printf("GIANT CANNON FIRED! KA-BOOM! (Remaining charge: %d/10)", charge);
+    Telemetry_Printf("GIANT CANNON FIRED! KA-BOOM! (Remaining charge: %d/50)", charge);
     Telemetry_EvtCannon((uint8_t)charge);
     Telemetry_Printf("GIANT DOWN! The giant collapses.");
     Telemetry_EvtGiantDown();

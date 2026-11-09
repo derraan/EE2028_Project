@@ -420,43 +420,83 @@ static void Laser_SetOutput(void *ctx, uint8_t on)
     HAL_GPIO_WritePin(p->port, p->pin, (level != 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
-/* Slew the servo to `to_us` in small steps so the sweep is gentle. */
-static void Servo_Glide(uint16_t from_us, uint16_t to_us, uint32_t ms)
-{
-    const uint32_t steps = 25U;
-    uint32_t i;
-    for (i = 1U; i <= steps; i++) {
-        int32_t us = (int32_t)from_us + (((int32_t)to_us - (int32_t)from_us) * (int32_t)i) / (int32_t)steps;
-        Servo_SetPulse(NULL, (uint16_t)us);
-        HAL_Delay(ms / steps);
-    }
-}
+/* Non-blocking servo bench check, tick-driven sequence:
+ * centre -> left -> centre -> right -> centre, stepped by Enhancements_HW_ServoSelfTestStep(). */
+#define SELFTEST_SEGMENTS 8U /* hold, glide, hold, glide, hold, glide, hold, glide */
+#define SELFTEST_STEPS    25U
+#define SELFTEST_GLIDE_MS 500U
+static struct {
+    uint8_t  active;
+    uint8_t  seg;
+    uint8_t  step;
+    uint32_t next_ms;
+    uint16_t c, left, right;
+} s_selftest;
 
 void Enhancements_HW_ServoSelfTest(void)
 {
-    /* ±45° around the trimmed centre (~11.1 µs/°), inside EE_SERVO_PAN_LIMIT_DEG. */
+    /* +/-45 deg around the trimmed centre (~11.1 us/deg), inside EE_SERVO_PAN_LIMIT_DEG. */
     const int32_t span = 500;
-    const uint16_t c = (uint16_t)EE_SERVO_CENTER_US;
-    const uint16_t left = (uint16_t)((int32_t)c - (span * (int32_t)EE_SERVO_DIRECTION));
-    const uint16_t right = (uint16_t)((int32_t)c + (span * (int32_t)EE_SERVO_DIRECTION));
 
+    s_selftest.active = 0U;
     if (s_servo_ready == 0U) {
         Telemetry_Printf("Servo self-test skipped: TIM3 PWM on D5 did not start.");
         return;
     }
+    s_selftest.c = (uint16_t)EE_SERVO_CENTER_US;
+    s_selftest.left = (uint16_t)((int32_t)s_selftest.c - (span * (int32_t)EE_SERVO_DIRECTION));
+    s_selftest.right = (uint16_t)((int32_t)s_selftest.c + (span * (int32_t)EE_SERVO_DIRECTION));
     Laser_SetOutput(&s_laser_pin, 0U); /* laser never lights during the self-test */
     Telemetry_Printf("Servo self-test (D5): centre -> left -> centre -> right -> centre. Laser stays OFF.");
-    Servo_SetPulse(NULL, c);
-    HAL_Delay(300U);
-    Servo_Glide(c, left, 500U);
-    HAL_Delay(250U);
-    Servo_Glide(left, c, 500U);
-    HAL_Delay(250U);
-    Servo_Glide(c, right, 500U);
-    HAL_Delay(250U);
-    Servo_Glide(right, c, 500U);
-    Laser_SetOutput(&s_laser_pin, 0U);
-    Telemetry_Printf("Servo self-test done (horn should be back at centre).");
+    Servo_SetPulse(NULL, s_selftest.c);
+    s_selftest.seg = 0U;
+    s_selftest.step = 0U;
+    s_selftest.next_ms = HAL_GetTick() + 300U;
+    s_selftest.active = 1U;
+}
+
+uint8_t Enhancements_HW_ServoSelfTestStep(uint32_t now_ms)
+{
+    uint16_t from_us;
+    uint16_t to_us;
+    int32_t us;
+
+    if (s_selftest.active == 0U) {
+        return 0U;
+    }
+    if ((int32_t)(now_ms - s_selftest.next_ms) < 0) {
+        return 1U;
+    }
+    if ((s_selftest.seg & 1U) == 0U) { /* hold segment */
+        s_selftest.seg++;
+        s_selftest.step = 0U;
+        s_selftest.next_ms = now_ms;
+        return 1U;
+    }
+    /* glide segments: 1 c->left, 3 left->c, 5 c->right, 7 right->c */
+    switch (s_selftest.seg) {
+        case 1U:  from_us = s_selftest.c;     to_us = s_selftest.left;  break;
+        case 3U:  from_us = s_selftest.left;  to_us = s_selftest.c;     break;
+        case 5U:  from_us = s_selftest.c;     to_us = s_selftest.right; break;
+        default:  from_us = s_selftest.right; to_us = s_selftest.c;     break;
+    }
+    s_selftest.step++;
+    us = (int32_t)from_us + (((int32_t)to_us - (int32_t)from_us) * (int32_t)s_selftest.step) / (int32_t)SELFTEST_STEPS;
+    Servo_SetPulse(NULL, (uint16_t)us);
+    if (s_selftest.step >= SELFTEST_STEPS) {
+        s_selftest.seg++;
+        s_selftest.step = 0U;
+        s_selftest.next_ms = now_ms + 250U; /* hold after each glide */
+        if (s_selftest.seg >= SELFTEST_SEGMENTS) {
+            s_selftest.active = 0U;
+            Laser_SetOutput(&s_laser_pin, 0U);
+            Telemetry_Printf("Servo self-test done (horn should be back at centre).");
+            return 0U;
+        }
+    } else {
+        s_selftest.next_ms = now_ms + (SELFTEST_GLIDE_MS / SELFTEST_STEPS);
+    }
+    return 1U;
 }
 
 static HAL_StatusTypeDef Radar_UartInit(void)

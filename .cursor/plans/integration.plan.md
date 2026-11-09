@@ -37,7 +37,7 @@ Keep the event handler lightweight and run peripheral updates in the foreground.
 Move the existing sensor print output from semihosting to **USART / ST-LINK Virtual COM**. Keep the current human-readable sensor layout and add a small set of machine-readable `EVT` lines. Each message occupies one line, so the same stream works in a serial terminal and in VESPER.
 
 ```
-Telemetry -> T:26.4 °C, P:1012.5 hPa, H:55.1 % | Accel:[0.0, 0.1, 9.8] m/s^2 | Gyro:[0.0, 0.0, 0.2] dps | Magneto:[31.0, 42.0, 18.0] mgauss
+Telemetry -> T:26.40 °C, P:1012.50 hPa, H:55.10 % | Accel:[0.00, 0.10, 9.80] m/s^2 | Gyro:[0.00, 0.00, 0.20] dps | Magneto:55.22 mgauss
 EVT MODE=BATTLE_MODE
 EVT CHARGE=6/10
 EVT FIRE charge=1/10

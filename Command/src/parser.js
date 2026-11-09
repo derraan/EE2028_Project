@@ -3,8 +3,14 @@
  * Buffer to newline → parse sensor + known EVT; unrecognized → raw log.
  */
 
+/** Laser charge scale (official 0..50; firing needs 25). Mirrors LASER_* in Core/Src/main.c. */
+export const CHARGE_MAX = 50;
+export const CHARGE_FIRE_MIN = 25;
+
+/* Magneto is magnitude-only (`Magneto:54.12 mgauss`). Legacy XYZ
+ * `Magneto:[x, y, z] mgauss` is still accepted and reduced to hypot. */
 const SENSOR_RE =
-  /^Telemetry\s*->\s*T:([-\d.]+)\s*°?\s*C,\s*P:([-\d.]+)\s*hPa,\s*H:([-\d.]+)\s*%\s*\|\s*Accel:\[([-\d.]+),\s*([-\d.]+),\s*([-\d.]+)\]\s*m\/s\^2\s*\|\s*Gyro:\[([-\d.]+),\s*([-\d.]+),\s*([-\d.]+)\]\s*dps\s*\|\s*Magneto:\[([-\d.]+),\s*([-\d.]+),\s*([-\d.]+)\]\s*mgauss/i;
+  /^Telemetry\s*->\s*T:([-\d.]+)\s*°?\s*C,\s*P:([-\d.]+)\s*hPa,\s*H:([-\d.]+)\s*%\s*\|\s*Accel:\[([-\d.]+),\s*([-\d.]+),\s*([-\d.]+)\]\s*m\/s\^2\s*\|\s*Gyro:\[([-\d.]+),\s*([-\d.]+),\s*([-\d.]+)\]\s*dps\s*\|\s*Magneto:(?:\[([-\d.]+),\s*([-\d.]+),\s*([-\d.]+)\]|([-\d.]+))\s*mgauss/i;
 
 /** EVT NAME  |  EVT NAME=value  |  EVT NAME key=value … */
 const EVT_RE = /^EVT\s+(\w+)\s*(.*)$/i;
@@ -54,7 +60,7 @@ export function createEmptyState() {
       H: null,
       Accel: [null, null, null],
       Gyro: [null, null, null],
-      Magneto: [null, null, null],
+      Magneto: null, /* magnitude mgauss (scalar) */
       units: { ...UNITS },
     },
     thresholds: { ok: true, lines: [] },
@@ -107,7 +113,7 @@ function parseKv(rest) {
   while ((m = KV_RE.exec(rest)) !== null) {
     out[m[1].toLowerCase()] = m[2];
   }
-  // Bare value forms: EVT CHARGE=6/10 already covered; EVT COUNTDOWN=7 legacy
+  // Bare value forms: EVT CHARGE=30/50 already covered; EVT COUNTDOWN=7 legacy
   if (Object.keys(out).length === 0 && rest.includes('=')) {
     const [k, v] = rest.split('=', 2);
     out[k.trim().toLowerCase()] = v.trim();
@@ -117,8 +123,11 @@ function parseKv(rest) {
 
 function parseChargeToken(tok) {
   if (!tok) return null;
-  const m = String(tok).match(/(\d+)\s*\/\s*10/);
-  return m ? Math.min(10, Math.max(0, Number(m[1]))) : null;
+  // Official scale is n/50. Legacy n/10 logs (old fixtures) are rescaled ×5.
+  const m = String(tok).match(/(\d+)\s*\/\s*(10|50)/);
+  if (!m) return null;
+  const n = m[2] === '10' ? Number(m[1]) * 5 : Number(m[1]);
+  return Math.min(CHARGE_MAX, Math.max(0, n));
 }
 
 function normalizeMode(tag) {
@@ -130,7 +139,7 @@ function normalizeMode(tag) {
 function applyCharge(state, n) {
   if (n == null || Number.isNaN(n)) return;
   state.charge = n;
-  state.armed = n >= 5;
+  state.armed = n >= CHARGE_FIRE_MIN;
 }
 
 /**
@@ -160,7 +169,13 @@ export function parseLine(state, line) {
     state.telemetry.H = Number(sensor[3]);
     state.telemetry.Accel = [Number(sensor[4]), Number(sensor[5]), Number(sensor[6])];
     state.telemetry.Gyro = [Number(sensor[7]), Number(sensor[8]), Number(sensor[9])];
-    state.telemetry.Magneto = [Number(sensor[10]), Number(sensor[11]), Number(sensor[12])];
+    if (sensor[13] != null) {
+      state.telemetry.Magneto = Number(sensor[13]);
+    } else {
+      state.telemetry.Magneto = Math.hypot(
+        Number(sensor[10]), Number(sensor[11]), Number(sensor[12])
+      );
+    }
     state.telemetryAt = Date.now();
     // Resuming normal telemetry implies thresholds cleared unless sticky warn set.
     if (!state.thresholds.ok && state.thresholds.lines.length) {
@@ -206,21 +221,21 @@ export function parseLine(state, line) {
       case 'CHARGE': {
         const n = parseChargeToken(kv.charge || bare || rest || Object.values(kv)[0]);
         applyCharge(state, n);
-        pushEvent(state, `CHARGE ${state.charge}/10`);
+        pushEvent(state, `CHARGE ${state.charge}/${CHARGE_MAX}`);
         return { kind: 'evt', name, charge: state.charge };
       }
       case 'FIRE': {
         const n = parseChargeToken(kv.charge || bare || rest);
         applyCharge(state, n);
         state.fireSeq += 1;
-        pushEvent(state, `FIRE → ${state.charge}/10`);
+        pushEvent(state, `FIRE → ${state.charge}/${CHARGE_MAX}`);
         return { kind: 'evt', name, charge: state.charge };
       }
       case 'CANNON': {
         const n = parseChargeToken(kv.charge || bare || rest);
         applyCharge(state, n);
         state.cannonSeq += 1;
-        pushEvent(state, `GIANT CANNON → ${state.charge}/10`);
+        pushEvent(state, `GIANT CANNON → ${state.charge}/${CHARGE_MAX}`);
         return { kind: 'evt', name, charge: state.charge };
       }
       case 'GIANT': {

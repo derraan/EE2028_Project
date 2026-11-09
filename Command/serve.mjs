@@ -4,11 +4,14 @@
  *   node Command/serve.mjs            → http://localhost:3000
  *   node Command/serve.mjs 8080       → custom port
  * Serves only files inside Command/. ES modules need http://, not file://.
+ * Also bridges Wi-Fi board telemetry: /wifi/stream (TCP → SSE), /wifi/scan
+ * (see bridge/wifi_bridge.mjs).
  */
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { handleWifi } from './bridge/wifi_bridge.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.argv[2] || process.env.PORT || 3000);
@@ -27,6 +30,7 @@ const TYPES = {
 };
 
 const server = http.createServer((req, res) => {
+  if (handleWifi(req, res)) return;
   let rel;
   try {
     rel = decodeURIComponent(new URL(req.url, 'http://x').pathname);

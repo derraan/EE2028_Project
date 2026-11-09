@@ -178,6 +178,17 @@ All mission lines (prose, sensor lines, `EVT …`) go to the **ST-LINK Virtual C
 
 Only one program can hold the COM port: close Tera Term before connecting VESPER. Plain `printf` (debug notes) still goes to the CubeIDE Console over semihosting, only while debugging; mission text never uses it.
 
+### Telemetry over Wi-Fi (optional)
+
+The same telemetry can also stream over the board's on-board Wi-Fi (ISM43362), so VESPER doesn't need the USB data link. UART keeps working at the same time.
+
+1. **Hotspot:** 2.4 GHz, WPA2-Personal. iPhone: *Personal Hotspot → Maximize Compatibility* on. Android: AP band 2.4 GHz. University WPA2-Enterprise Wi-Fi won't work.
+2. **Credentials:** copy `App/Inc/wifi_config.example.h` → `App/Inc/wifi_config.h` and fill `WIFI_SSID` / `WIFI_PASSWORD`. The file is git-ignored; never commit it.
+3. **F5** in CubeIDE, rebuild, flash. Telemetry (UART) shows `Wi-Fi: joining "<ssid>"…` then `Wi-Fi: connected to <ssid>, IP 172.20.10.x, telemetry TCP port 5028` a few seconds after boot. The drone runs normally meanwhile (non-blocking).
+4. **Laptop on the same hotspot:** `node Command/serve.mjs` → http://localhost:3000 → Signal source **Live board (Wi-Fi)** → **Find board** (or type the IP) → **Connect**. The link pill shows **LIVE WI-FI**.
+
+If the hotspot drops, VESPER shows *link lost* and the bridge reconnects every 2 s; the board's snapshot restores mode and charge.
+
 ### First-flash checks
 
 **Debug (baseline)** — from `docs/Next_Steps.md`: prove LED2, the USER button and the `Drone initialized: Entering STANDBY MODE` line plus a `Telemetry -> T:…` line every second on the COM port (VESPER or Tera Term) before flashing **Enhanced** or wiring Grove hardware.
@@ -187,10 +198,10 @@ Only one program can hold the COM port: close Tera Term before connecting VESPER
 | Action | Matrix | Buzzer |
 |---|---|---|
 | Power-up (Enhanced) | — (servo on D5 sweeps centre → left → centre → right → centre, ~3.5 s; laser stays OFF; telemetry prints `Servo self-test …`) | Silent |
-| Boot (Standby) | Steady charge bar (full at 10/10) | Silent |
+| Boot (Standby) | Steady charge bar (full at 50/50; the matrix bar is 0–10 scaled) | Silent |
 | Double press → Battle | `BATTLE MODE` scrolls once | Three rising beeps |
-| In Battle, charge ≥ 5 | Charge bar **blinks** | — |
-| Hold button with charge < 5 | — | Rough "brrr" (refused) |
+| In Battle, charge ≥ 25/50 | Charge bar **blinks** | — |
+| Hold button with charge < 25/50 | — | Rough "brrr" (refused) |
 | Single press (recharge +3) | Bar grows | Short blip |
 | Hold to fire | Bar shrinks by 5 | "Pew" per shot |
 | Flip upside down | `THE LAST OF EE2028` scrolls, then digits 5…0 flash | Beeps that speed up |
@@ -236,6 +247,9 @@ If text on the matrix is mirrored or upside down, note which and see `docs/LED_M
 | Launch fails: `Failed to execute MI command: monitor arm semihosting enable … Protocol error with Rcmd` | Debug probe set to **ST-LINK GDB server**, which does not understand this OpenOCD command (CubeIDE can switch the probe when a launch is edited or created with **Debug As**) | Debugger tab → **ST-LINK (OpenOCD)**, port 3333, Automated script (§5 step 4) |
 | `undefined reference to 'initialise_monitor_handles'` | Building **Release**, which does not link `rdimon` | Use Debug or Enhanced (§3.5) |
 | VESPER / Tera Term shows nothing | Wrong COM port, another program holds it, or old firmware without `telemetry_uart.c` | Pick the **STLink Virtual COM Port**, close other terminals, F5 + rebuild + flash. Reset the board (black button) to see the boot lines again |
+| UART says `Wi-Fi telemetry off: create App/Inc/wifi_config.h` | No credentials file | See *Telemetry over Wi-Fi* (§5) |
+| `Wi-Fi: could not join …` keeps repeating | Wrong SSID/password, or hotspot on 5 GHz only | Fix `wifi_config.h`; enable 2.4 GHz / Maximize Compatibility |
+| **Find board** finds nothing | Laptop on a different network than the board, or the board is still joining | Same hotspot for both; wait for the `Wi-Fi: connected … IP …` line, or type that IP |
 | VESPER **Connect board** does nothing | Browser without Web Serial | Use Chrome or Edge on http://localhost:3000 |
 | Matrix stays dark on Enhanced | Not on D15/D14, no power/GND, or the build is **Debug** (enhancements compiled out) | Check §3.6 wiring and that the **Enhanced** `.elf` was flashed. The firmware skips a matrix that does not answer at 0x70 |
 | No buzzer / matrix changes after `git pull` | CubeIDE did not see the new files | **F5**, **Project → Clean…**, rebuild |

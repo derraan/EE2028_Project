@@ -22,6 +22,7 @@ Pick a **signal source** in the control deck:
 | **Recorded mission** | `fixtures/*.log` replayed line by line |
 | **Paste UART log** | Any Tera Term capture |
 | **Live board** | Chrome/Edge Web Serial @ 115200 8N1 → ST-LINK VCP. Disconnect = link loss, **not** `TERMINATE`. |
+| **Live board (Wi-Fi)** | Board's ISM43362 TCP :5028 → `serve.mjs` `/wifi/stream` (SSE) → same parser. **Find board** scans the hotspot; board drop = link loss, bridge retries every 2 s. |
 
 Every source goes through the **same** `src/parser.js`.
 
@@ -32,7 +33,7 @@ Every source goes through the **same** `src/parser.js`.
 | `EVT MODE=STANDBY_MODE` | Drone patrols the pad, cyan running lights, steady LED |
 | `EVT MODE=BATTLE_MODE` | Drone climbs, red searchlight, turret tracks the nearest infected, 1 Hz nav lights |
 | `Critical T/A/G threshold violated` | A spore meteor strikes the field and a wave rises |
-| `EVT FIRE charge=n/10` | Laser gun vaporises the priority infected (one per FIRE). Giants shrug it off |
+| `EVT FIRE charge=n/50` | Laser gun vaporises the priority infected (one per FIRE). Giants shrug it off |
 | `EVT RADAR … lock=1` | A **giant** (10–20× a zombie) rises where the radar lock is; the camera swings to a side view |
 | `EVT CANNON` | Thick red giant-cannon beam from the drone to the giant's chest |
 | `EVT GIANT hit=1/2` / `down` | Giant staggers / topples and explodes; *Giants* counter increments |
@@ -91,7 +92,7 @@ Tuned for integrated GPUs: the procedural sky is baked once into a cube map, blo
 ## Rules the game must keep
 
 - The page never decides that the drone fired, was rescued or self-destructed. Effects are triggered by parsed events only.
-- `sim.js` must stay in step with `Core/Src/main.c` (hold-to-fire, +3 charge only below 5/10, 10 s / 5-rescue self-destruct). Change both together and extend `test_virtual_board.mjs`.
+- `sim.js` must stay in step with `Core/Src/main.c` (hold-to-fire, 0–50 charge: +3 per press, fire at ≥25, double press to Standby only at 50/50, 10 s / 5-rescue self-destruct). Change both together and extend `test_virtual_board.mjs`.
 - Naming: enum `THE_LAST_OF_2028`; on-screen banner `THE LAST OF EE2028`.
 
 ## Contract

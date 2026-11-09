@@ -277,7 +277,7 @@ export function createRadarMirror(emit) {
     cannonReady() {
       return tracker.t.locked && !terminal;
     },
-    /** Cannon_OnFired(): main.c already spent 10/10. Prints the same EVT GIANT lines. */
+    /** Cannon_OnFired(): main.c already spent the 10 charge. Prints the same EVT GIANT lines. */
     cannon(now) {
       if (!tracker.t.locked) {
         emit('Giant cannon missed - the target moved out of lock.');
@@ -293,7 +293,7 @@ export function createRadarMirror(emit) {
         emit('GIANT DOWN! The giant collapses.');
         emit('EVT GIANT down');
       } else {
-        emit(`Giant hit! (${giantHits}/${GIANT.HP}) - recharge to 10/10 to finish it.`);
+        emit(`Giant hit! (${giantHits}/${GIANT.HP}) - fire again (10 charge) to finish it.`);
         emit(`EVT GIANT hit=${giantHits}/${GIANT.HP}`);
       }
     },

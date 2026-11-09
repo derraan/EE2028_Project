@@ -31,7 +31,7 @@ STANDBY ──double-press or T/A/G──► BATTLE ──upside-down──► T
 ```
 
 1. **Standby** — status LED on; telemetry every second; ignore a single press.
-2. **Battle** — LED blinks 1 Hz. Single press adds **+3/10** charge (cap 10). **Hold** the button ≥500 ms with charge ≥5/10 to fire full-auto (−5 per shot). Double-press returns to Standby.
+2. **Battle** — LED blinks 1 Hz. Laser charge is the official **0–50** scale (starts 50/50). Each short press adds **+3** at once (cap 50). **Hold** the button ≥500 ms with charge ≥25/50 to fire full-auto (−5 per shot). Double-press returns to Standby, but only at 50/50.
 3. **The Last of EE2028** — board flipped upside-down. LED blinks 2 Hz; attack lines at 1 Hz. Upright double-press **rescues** back to Battle. Otherwise self-destruct after **10 seconds** or **5 failed** upside-down rescues.
 4. **Self-destruct** — sacrifice message, `Cheerio!`, then permanent halt. With enhancements on, matrix / buzzer / relay play final effects first.
 
@@ -41,8 +41,8 @@ STANDBY ──double-press or T/A/G──► BATTLE ──upside-down──► T
 
 Do not “fix” these from older checklist wording without a focused patch:
 
-- Fire is **hold-to-fire**, not auto-fire as soon as charge hits 5/10.
-- Armed (for the matrix) means Battle **and** charge ≥ 5/10.
+- Fire is **hold-to-fire**, not auto-fire as soon as charge hits 25/50.
+- Armed (for the matrix) means Battle **and** charge ≥ 25/50 (the matrix itself still draws a 0–10 bar; `main.c` scales 0–50 down).
 - Battle also opens on **T / A / G** threshold trips (PR #3 behaviour).
 - IR detects and chirps only — it does **not** change mode or fire the laser.
 
@@ -72,6 +72,7 @@ Do not “fix” these from older checklist wording without a focused patch:
 | Pan servo | D5 = PB4, TIM3_CH1 50 Hz | Tracks the lock; one self-test sweep at boot |
 | Laser (giant cannon) | D7 = PA4, via transistor | Lit only for a 1 s cannon beam |
 | Telemetry | ST-LINK VCP (USART1 PB6/PB7, 115200) | Tera Term / VESPER |
+| Wi-Fi telemetry (optional) | On-board ISM43362 (SPI3), TCP 5028 | Same lines to VESPER via `serve.mjs` bridge; needs `App/Inc/wifi_config.h` |
 
 Full pinout incl. on-board LED / button / sensors, power rules and safe boot states: [docs/Hardware_Pinout.md](docs/Hardware_Pinout.md).
 
@@ -182,6 +183,7 @@ scripts/       Serial monitor, UART capture notes, parser / sim smoke tests
 | [docs/Telemetry_EVT_Contract.md](docs/Telemetry_EVT_Contract.md) | UART / `EVT` line formats |
 | [docs/Assignment2_Enhancements.md](docs/Assignment2_Enhancements.md) | Enhancement backlog #1–#7 |
 | [docs/Button_Input_Enhancement.md](docs/Button_Input_Enhancement.md) | Push-button classifier |
+| [docs/Timing_and_Interrupts.md](docs/Timing_and_Interrupts.md) | Non-blocking `HAL_GetTick()` timing, interrupt inventory (no `HAL_Delay`) |
 | [docs/LED_Matrix_Design.md](docs/LED_Matrix_Design.md) | Matrix HUD |
 | [docs/Buzzer_Design.md](docs/Buzzer_Design.md) | Buzzer patterns |
 | [docs/IR_Design.md](docs/IR_Design.md) | IR threat |

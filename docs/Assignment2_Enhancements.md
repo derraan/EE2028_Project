@@ -26,7 +26,7 @@ High-impact extras for the spaceship drone, biased toward **hardware we already 
 | | |
 |--|--|
 | **What** | One 8×8 display presents every main feature: charge state, armed state, radar azimuth, mode changes and self-destruct countdown |
-| **Charging** | Fill a 0–8 column progress bar. Once armed (charge ≥ 5/10 in Battle), the bar itself blinks until charge drops below 5 (the rest of the matrix stays dark) |
+| **Charging** | Fill a 0–8 column progress bar. Once armed (charge ≥ 25/50 in Battle; the adapter sees the charge scaled to 0–10), the bar itself blinks until charge drops below 25/50 (the rest of the matrix stays dark) |
 | **Radar** | Draw a moving vertical line whose horizontal position represents the locked RD-03D target's azimuth, left to right (Battle). Standby shows the same lock as a 180° dial needle. Fed live by the adapter (`RadarTrack_MatrixColumn`) |
 | **Mode text** | Scroll `BATTLE MODE` once when Battle begins. Scroll `THE LAST OF EE2028` repeatedly for the whole THE_LAST_OF_2028 mode |
 | **Countdown** | Live path: one 10 s drone clock via `rescue_remaining_ms` / `StatusDisplay_SetRescueRemainingMs`. Harness may still use a longer standalone sequence. At `0`, explosion frame then blank |
@@ -93,8 +93,8 @@ The GPIO drives the relay module's control input, not a relay coil directly. The
 | | |
 |--|--|
 | **Story** | The RD-03D detects **giants**: every radar-locked person is a giant 10–20× the size of a zombie. The physical red laser pointer is the drone's **giant cannon**, far bigger than the laser gun |
-| **Fire rule** | Battle + giant locked + charge **10/10** → hold-to-fire fires the **cannon** (spends all 10, `EVT CANNON`) instead of the gun. Otherwise hold-to-fire is the normal gun (−5, `EVT FIRE`), which only kills zombies |
-| **Recharge** | With a giant locked, single press keeps adding +3 past 5 up to 10/10 ("Cannon charging…"). With no giant the baseline rule (only below 5) is unchanged |
+| **Fire rule** | Battle + giant locked + charge **≥ 10** → hold-to-fire fires the **cannon** (**10 charge per shot**, `EVT CANNON`) instead of the gun. Otherwise hold-to-fire is the normal gun (−5, `EVT FIRE`), which only kills zombies |
+| **Recharge** | Single presses recharge +3 at once up to 50/50 (the same rule with or without a giant); "GIANT CANNON READY" prints when a locked giant meets 10 charge. A giant takes 2 hits, so killing one costs 2 × 10 = 20 charge |
 | **Giant HP** | 2 cannon hits (firmware counts on the current lock): `EVT GIANT hit=1/2`, then `EVT GIANT down`. Lock lost → next giant starts at full HP |
 | **Physical laser** | Off normally; lights for a **1 s beam** per cannon shot on the locked giant (servo aimed). No aim dot, and gun shots never light it |
 | **Feedback** | Buzzer: charge-up + blast (hit) or blast + fanfare (down). Matrix: thick flashing beam on the giant's column (hit) or a burst (down). VESPER: giant rises at the lock, thick red beam, stagger / topple, Giants counter |

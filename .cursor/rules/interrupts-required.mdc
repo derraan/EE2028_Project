@@ -1,0 +1,32 @@
+---
+description: Prefer real interrupts/handlers when they fit the hardware — PB must be EXTI-driven
+alwaysApply: true
+---
+
+# Interrupts and interrupt handlers
+
+When a peripheral or input is interrupt-capable and using an interrupt improves latency, bounce handling, or offloads the main loop, the firmware **must** enable that IRQ and put a real handler/callback on the path. Do not leave interrupts initialized as dead stubs while the main loop silently polls as if the ISR did not exist.
+
+## Required pattern
+
+| Concern | Correct | Forbidden |
+|---------|---------|-----------|
+| USER push button | `BSP_PB_Init(..., BUTTON_MODE_EXTI)` + `HAL_GPIO_EXTI_Callback` debounce/stamp + main loop that **consumes** the EXTI edge (press start requires an accepted edge) | `BUTTON_MODE_GPIO` only, or EXTI init/callback whose `pb_edge_pending` / edge tick are cleared and ignored |
+| ISR body | Flags, timestamps, ring-buffer writes; shared vars `volatile` | `printf` / telemetry, mode changes, I2C, blocking waits in the ISR |
+| Main loop | Classify gestures / parse rings using ISR-produced data | Re-implement the same edge detection by polling alone while EXTI is “enabled for show” |
+| New interrupt-worthy I/O (UART RX, DRDY, etc.) | NVIC enable + named `*_IRQHandler` / HAL callback that feeds the app | Polling-only paths when an IRQ is already documented as the design |
+
+## Push button (canonical example)
+
+1. Init with **EXTI** (prefer rising **and** falling).
+2. `HAL_GPIO_EXTI_Callback(USER_BUTTON_PIN)` applies `PB_DEBOUNCE_MS` and sets `pb_edge_pending` / `pb_edge_tick`.
+3. `Process_PushButton()` **must use** that edge: a new press starts only on an accepted EXTI edge with GPIO low; hold may keep sampling level while already down; release may use level as a single-edge BSP fallback but should prefer the EXTI timestamp when present.
+4. Discarding `pb_edge_pending` with `(void)pb_edge_tick` and classifying solely from `BSP_PB_GetState()` is a guardrail violation — fix it before finishing.
+
+## Still allowed
+
+- Level reads **after** an EXTI-armed press (hold-to-fire while GPIO stays low).
+- SysTick / `HAL_GetTick()` timebases for non-blocking windows (not a substitute for button EXTI).
+- Documented cases where Cube already owns the vector (`-DEE_RADAR_OWN_IRQ=0`, call into our ISR body from Cube’s handler).
+
+See `docs/Timing_and_Interrupts.md` and `docs/Button_Input_Enhancement.md`.
