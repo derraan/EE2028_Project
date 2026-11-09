@@ -329,3 +329,10 @@ body.nohud .hud, body.nohud .deck, body.nohud .topbar, body.nohud .intro, body.n
 @media (prefers-reduced-motion: reduce) {
   .mode-led, .emergency-label, .armed.on, #app[data-alarm="1"] .screen-fx { animation: none !important; }
 }
+
+.lab-meter i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #3fe08a, #9fe84a); transition: width 0.2s linear, background 0.3s; }
+.lab-meter[data-low="1"] i { background: linear-gradient(90deg, #ff9a3a, #ffd24a); }
+.lab-meter[data-crit="1"] i { background: linear-gradient(90deg, #ff2a3a, #ff6a4a); }
+
+.you-lost { position: fixed; inset: 0; display: grid; place-items: center; z-index: 50; pointer-events: none; background: rgba(20, 0, 4, 0.55); color: #ff3a4a; font: 700 clamp(48px, 12vw, 160px) var(--mono); letter-spacing: 0.12em; text-shadow: 0 0 40px rgba(255, 40, 60, 0.8); }
+.you-lost[hidden] { display: none; }

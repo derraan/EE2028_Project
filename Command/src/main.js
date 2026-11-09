@@ -335,6 +335,7 @@ function frame(now) {
       radar: state.radar,
       simRadar: source === 'simulation',
       giantHits: state.giant.hits,
+      telemetry: state.telemetry,
     },
     ev
   );

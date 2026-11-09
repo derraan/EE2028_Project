@@ -97,7 +97,7 @@ export function createHorde(scene) {
       g, hips, neck, arms, legs, shadow,
       alive: false, state: 'idle', t: 0,
       pos: new THREE.Vector3(), vel: new THREE.Vector3(),
-      speed: 1, phase: Math.random() * 10, slot: new THREE.Vector3(),
+      speed: 1, phase: Math.random() * 6, slot: new THREE.Vector3(),
       lurch: 0,
     };
   }
@@ -117,6 +117,12 @@ export function createHorde(scene) {
     get alive() {
       return pool.filter((z) => z.alive && z.state !== 'die');
     },
+    /** Zombies currently clawing at the lab fence. */
+    attackingLab() {
+      let n = 0;
+      for (const z of pool) if (z.alive && z.state === 'claw' && target === 'lab') n++;
+      return n;
+    },
     count() {
       let n = 0;
       for (const z of pool) if (z.alive && z.state !== 'die') n++;
@@ -132,10 +138,12 @@ export function createHorde(scene) {
         z.alive = true;
         z.state = 'rise';
         z.t = -made * delay;
+        // Random bearing and random distance from `center`; wide scatter so
+        // they arrive staggered, not as one clump.
         const a = Math.random() * Math.PI * 2;
-        const r = 1 + Math.random() * 3.2;
+        const r = 2 + Math.random() * 6;
         z.pos.set(center.x + Math.cos(a) * r, 0, center.z + Math.sin(a) * r);
-        z.speed = 0.9 + Math.random() * 0.9;
+        z.speed = 4.2 + Math.random() * 4.0; // long approach: cover 70-130 units in ~30-40 s
         z.lurch = Math.random();
         z.g.position.copy(z.pos).setY(-2.2);
         z.g.rotation.set(0, Math.atan2(LAB_CENTER.x - z.pos.x, LAB_CENTER.z - z.pos.z), 0);
@@ -278,7 +286,7 @@ export function createHorde(scene) {
         const goal = target === 'drone' ? dronePos : z.slot;
         tmp.subVectors(goal, z.pos).setY(0);
         const dist = tmp.length();
-        const reach = target === 'drone' ? 2.4 + (z.lurch * 1.2) : 0.6;
+        const reach = target === 'drone' ? 2.4 + z.lurch * 1.2 : 0.6;
         const moving = dist > reach;
         if (moving) {
           tmp.normalize().multiplyScalar(z.speed * (0.75 + 0.25 * Math.max(0, walkSwing)));

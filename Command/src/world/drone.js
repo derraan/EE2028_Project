@@ -161,19 +161,20 @@ export function createDrone(scene) {
   scene.add(shadow);
 
   body.scale.setScalar(1.45);
-  root.position.copy(PAD_POSITION).setY(3.2);
+  root.position.copy(PAD_POSITION).setY(45);
   scene.add(root);
 
   const state = {
     mode: 'STANDBY_MODE',
     down: false,
     flip: 0, // 0 upright → 1 inverted
-    alt: 3.2,
+    alt: 45,
     heading: 0,
     aim: new THREE.Vector3(0, 0, 20),
     hasTarget: false,
     recoil: 0,
     visible: true,
+    att: { roll: 0, pitch: 0, yaw: 0 }, // smoothed telemetry attitude (rad)
   };
   const goal = new THREE.Vector3();
   const muzzleWorld = new THREE.Vector3();
@@ -207,7 +208,7 @@ export function createDrone(scene) {
         state.hasTarget = true;
       } else state.hasTarget = false;
     },
-    update(dt, t, mode, { down = false, ended = false } = {}) {
+    update(dt, t, mode, { down = false, ended = false, telemetry = null } = {}) {
       state.mode = mode;
       state.down = down;
 
@@ -216,9 +217,9 @@ export function createDrone(scene) {
         goal.set(root.position.x, 0.75, root.position.z);
       } else if (mode === 'BATTLE_MODE') {
         const ax = state.hasTarget ? THREE.MathUtils.clamp(state.aim.x * 0.25, -7, 7) : Math.sin(t * 0.35) * 5;
-        goal.set(ax, 6.2 + Math.sin(t * 1.3) * 0.25, 1.5);
+        goal.set(ax, 70 + Math.sin(t * 1.3) * 1.5, 1.5);
       } else {
-        goal.set(PAD_POSITION.x + Math.sin(t * 0.25) * 4, 3.2 + Math.sin(t * 1.1) * 0.2, PAD_POSITION.z + 3 + Math.cos(t * 0.25) * 2.5);
+        goal.set(PAD_POSITION.x + Math.sin(t * 0.25) * 4, 45 + Math.sin(t * 1.1) * 1.2, PAD_POSITION.z + 3 + Math.cos(t * 0.25) * 2.5);
       }
       const k = down ? 1 - Math.exp(-dt * 3.5) : 1 - Math.exp(-dt * 1.6);
       const prevX = root.position.x;
@@ -240,8 +241,29 @@ export function createDrone(scene) {
 
       // Flip when down (THE_LAST_OF_2028), bank with lateral motion otherwise
       state.flip += ((down ? 1 : 0) - state.flip) * Math.min(1, dt * (down ? 4 : 2.2));
-      body.rotation.z = state.flip * Math.PI + (down ? 0 : THREE.MathUtils.clamp(-vx * 0.06, -0.35, 0.35));
-      body.rotation.x = down ? 0.15 : Math.sin(t * 1.7) * 0.03 - (mode === 'BATTLE_MODE' ? 0.06 : 0);
+      // Attitude from telemetry: roll/pitch from the accelerometer gravity vector,
+      // yaw from the integrated gyro Z (leaky, so gyro drift never wanders off).
+      const att = state.att;
+      let tRoll = 0;
+      let tPitch = 0;
+      let yawRate = 0;
+      if (telemetry && Array.isArray(telemetry.Accel) && Array.isArray(telemetry.Gyro)) {
+        const [ax, ay, az] = telemetry.Accel.map((v) => (Number.isFinite(v) ? v : 0));
+        if (Math.hypot(ax, ay, az) > 1) {
+          tRoll = Math.atan2(ay, az);
+          tPitch = Math.atan2(-ax, Math.hypot(ay, az));
+        }
+        yawRate = THREE.MathUtils.degToRad(Number.isFinite(telemetry.Gyro[2]) ? telemetry.Gyro[2] : 0);
+      }
+      const lim = (v) => THREE.MathUtils.clamp(v, -1.0, 1.0);
+      att.roll += (lim(tRoll) - att.roll) * Math.min(1, dt * 6);
+      att.pitch += (lim(tPitch) - att.pitch) * Math.min(1, dt * 6);
+      att.yaw += yawRate * dt;
+      att.yaw -= att.yaw * Math.min(1, dt * 0.25);
+      att.yaw = THREE.MathUtils.clamp(att.yaw, -Math.PI, Math.PI);
+      root.rotation.y = state.heading + (down ? 0 : att.yaw);
+      body.rotation.z = state.flip * Math.PI + (down ? 0 : THREE.MathUtils.clamp(-vx * 0.06, -0.35, 0.35) + att.roll);
+      body.rotation.x = down ? 0.15 : Math.sin(t * 1.7) * 0.03 - (mode === 'BATTLE_MODE' ? 0.06 : 0) - att.pitch;
       body.position.y = down ? 0 : Math.sin(t * 2.1) * 0.08;
 
       // Turret aims (local space) and recoils
