@@ -16,9 +16,7 @@ Regression: `node scripts/test_vesper_ingest.mjs` builds the real `telemetry_evt
 
 ### Wi-Fi transport
 
-- **Same bytes as UART.** `Telemetry_WriteLine` queues each `<line>
-
-` for the Wi-Fi client too (`App/Src/telemetry_wifi.c`). Lines are only queued while a client is connected; older lines are stale.
+- **Same bytes as UART.** `Telemetry_WriteLine` queues each `<line>\r\n` for the Wi-Fi client too (`App/Src/telemetry_wifi.c`). Lines are only queued while a client is connected; older lines are stale.
 - **Board = TCP server** on port 5028 (one client). It announces itself on UART: `Wi-Fi: connected to <ssid>, IP a.b.c.d, telemetry TCP port 5028`.
 - **Snapshot on connect.** When a client connects, `main.c` resends `EVT MODE=…`, `EVT CHARGE=n/50` and, in The Last of EE2028, `EVT COUNTDOWN`, so a late-joining VESPER shows the current state.
 - **Bridge.** Browsers cannot open TCP, so `Command/bridge/wifi_bridge.mjs` (inside `serve.mjs`) serves `GET /wifi/stream?host=<ip>` (one SSE `data:` per line, `event: status` for connecting / connected / closed / error, retry every 2 s) and `GET /wifi/scan` (finds hosts with 5028 open on the laptop's /24 networks). It forwards raw lines only; parsing stays in `parser.js`.
