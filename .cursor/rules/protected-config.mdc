@@ -1,0 +1,27 @@
+---
+description: Protected firmware config constants in Core/Src/main.c must not be changed
+alwaysApply: true
+---
+
+# Protected config constants (do not touch)
+
+The `#define` block near the top of `Core/Src/main.c`, from `/* Define thresholds */` through `EE_SERVO_SELFTEST`, is **user-owned tuning**. Do **not** change any value, name, unit comment or `#ifndef` guard in it. Do not delete, reorder, duplicate or move any of it into another file, and do not override it from another file.
+
+## Protected names (canonical in `Core/Src/main.c` only)
+
+| Group | Names |
+|---|---|
+| Thresholds | `THRESHOLD_A` 20.00f, `THRESHOLD_T` 50.00f, `THRESHOLD_G` 1000.00f, `THRESHOLD_H` 30.00f, `THRESHOLD_M` 10000.00f, `THRESHOLD_P` 900.00f |
+| Mag calibration / user settings | `MAG_CAL_MODE` 0, `MAG_OFFSET_X/Y/Z` -190.5f / -1883.0f / -137.5f, `MAG_SCALE_X/Y/Z` 0.789f / 0.787f / 2.165f, `MAG_MAP` 0, `YAW_GYRO_SIGN` (-1.0f), `YAW_DEBUG` 0 |
+| Yaw filter | `YAW_TAU_FAST_S` 0.15f, `YAW_TAU_SLOW_S` 1.5f, `YAW_STILL_DPS` 2.0f, `YAW_BOOT_FAST_MS` 2000U, `YAW_BIG_ERR_DEG` 30.0f, `HEADING_LPF_TAU_S` 0.05f, `GYRO_BIAS_TRACK_S` 20.0f |
+| Push button | `PB_DEBOUNCE_MS` 100U, `PB_DOUBLE_PRESS_MS` 500U, `PB_HOLD_MS` 500U, `PB_FIRE_PERIOD_MS` 500U, `ATTACK_MSG_PERIOD_MS` 1000U |
+| Laser / cannon | `LASER_CHARGE_MAX` 50, `LASER_CHARGE_STEP` 3, `LASER_FIRE_MIN` 25, `LASER_SHOT_COST` 5, `CANNON_CHARGE_COST` 10, and both `_Static_assert`s |
+| Rescue / self-test | `RESCUE_TIMEOUT_MS` 10000U (with its `#ifndef`), `RESCUE_ATTEMPT_LIMIT` 5, `EE_SERVO_SELFTEST` 0 (with its `#ifndef`) |
+
+## Rules
+
+- No other file may `#define` any **exact name** in the table above. If you find one, delete the duplicate, not the `main.c` copy. Different names that only share a prefix are fine, for example `PB_Pin`, `LASER_Pin` and `EE_SERVO_CENTER_US`.
+- `RESCUE_TIMEOUT_MS` also has an identical `#ifndef` fallback in `Core/Inc/drone.h` (10000U). Leave it alone, but it must always match `main.c`.
+- Fix bugs in the code that **uses** these constants. Never retune a constant to hide a bug.
+- If a task seems to require changing one of these values, stop and ask the user first.
+- Docs and the VESPER simulator must mirror these values; they must not redefine them differently.
