@@ -78,7 +78,8 @@ extern void initialise_monitor_handles(void); /* semihosting printf */
 #define GYRO_BIAS_TRACK_S   20.0f
 
 /* Push-button timing (USER button is active-low) */
-#define PB_DEBOUNCE_MS           100U
+#define PB_SAMPLE_MS               5U
+#define PB_DEBOUNCE_MS            20U
 #define PB_DOUBLE_PRESS_MS       500U
 #define PB_HOLD_MS               500U
 #define PB_FIRE_PERIOD_MS        500U
@@ -109,18 +110,13 @@ _Static_assert(LASER_FIRE_MIN >= LASER_SHOT_COST, "a shot must never take charge
 DroneState_t current_state = STANDBY_MODE;
 
 /*
- * Push button: EXTI (required) captures rising+falling edges; main loop consumes
- * the edge stamp and reads GPIO level for press/hold/release classification.
- * Configure USER button EXTI as rising AND falling (GPIO can still recover release
- * if the BSP only enables the falling edge).
+ * EXTI is the button monitor's wake-up source. The ISR does not debounce
+ * or classify presses. A single aligned counter avoids clearing an ISR-owned
+ * pending flag (and losing a new notification between read and clear).
+ * The monitor validates levels in the main loop, including release when
+ * the board BSP configures falling-edge-only EXTI.
  */
-volatile uint32_t pb_last_edge_tick = 0;
-volatile bool pb_edge_pending = false;
-volatile uint32_t pb_edge_tick = 0;
-/* Any edge, including ones the 100 ms debounce rejected: a re-press soon after
- * an accepted release still needs a way to start once the line has settled. */
-volatile bool pb_raw_edge = false;
-volatile uint32_t pb_raw_edge_tick = 0;
+static volatile uint32_t pb_irq_sequence = 0U;
 
 bool pb_is_down = false;
 uint32_t pb_down_tick = 0;
@@ -714,101 +710,137 @@ static void Telemetry_SendSnapshot(void)
     Telemetry_EvtCharge((uint8_t)Laser_Clamp(laser_charge));
 }
 
-/* --- EXTI: stamp rising/falling edges (GPIO level classified in Process_PushButton) --- */
+/*
+ * Button EXTI: notify the main loop and return immediately. The callback
+ * may be invoked for either edge; only a falling edge is required to wake
+ * the monitor for an active-low USER button.
+ */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-    if (GPIO_Pin != USER_BUTTON_PIN) return;
-    uint32_t now = HAL_GetTick();
-    if ((now - pb_last_edge_tick) < PB_DEBOUNCE_MS) return;
-    pb_last_edge_tick = now;
-    pb_edge_tick = now;
-    pb_edge_pending = true;
+    if (GPIO_Pin == USER_BUTTON_PIN) {
+        ++pb_irq_sequence;
+    }
 }
 
 /*
- * EXTI edge stamps + GPIO level (EXTI is required, not optional):
- *  - ISR debounce + set pb_edge_pending / pb_edge_tick
- *  - falling / GPIO low  -> press start (timestamp = EXTI tick)
- *  - rising  / GPIO high -> press end   (duration = release - press)
- * Hold: still low after PB_HOLD_MS (level poll while already down — no new edge).
- * If Cube only enables one EXTI edge, release can still be recovered from GPIO
- * once a press was started by EXTI.
+ * EXTI-woken button session with deadline-based, debounced GPIO sampling.
+ * No delays, spinning or GPIO polling while idle. The existing action
+ * handlers, laser-charge rules and hold-to-fire scheduler remain unchanged.
  */
 void Process_PushButton(void)
 {
-    const bool pressed = (BSP_PB_GetState(BUTTON_USER) == GPIO_PIN_RESET);
     const uint32_t now = HAL_GetTick();
+    static bool initialized = false;
+    static bool monitoring = false;
+    static bool candidate_pressed = false;
+    static bool second_press_eligible = false;
+    static uint32_t seen_irq = 0U;
+    static uint32_t last_sample_tick = 0U;
+    static uint32_t candidate_tick = 0U;
 
-    if (pb_edge_pending) {
-        pb_edge_pending = false;
+    /* One startup GPIO sample also supports a button held at boot. */
+    if (!initialized) {
+        initialized = true;
+        seen_irq = pb_irq_sequence;
+        candidate_pressed = (BSP_PB_GetState(BUTTON_USER) == GPIO_PIN_RESET);
+        monitoring = candidate_pressed;
+        candidate_tick = now;
+        last_sample_tick = now - PB_SAMPLE_MS;
     }
 
-    if (pressed && !pb_is_down) {
-        pb_is_down = true;
-        pb_down_tick = now;
-        pb_hold_latched = false;
-        pb_low_charge_warned = false;
-        pb_last_fire_tick = 0;
+    /* Observe IRQ activity without clearing a shared ISR-owned flag. */
+    const uint32_t irq_snapshot = pb_irq_sequence;
+    if (irq_snapshot != seen_irq) {
+        seen_irq = irq_snapshot;
+        monitoring = true;
+        last_sample_tick = now - PB_SAMPLE_MS;
     }
 
-    if (pb_is_down && pressed && !pb_hold_latched &&
-        (now - pb_down_tick) >= PB_HOLD_MS)
-    {
-        pb_hold_latched = true;
-        PB_CancelPendingSingle();
-        pb_last_short_press_tick = 0;
-        pb_last_fire_tick = now - PB_FIRE_PERIOD_MS;
-    }
+    /* Poll only during a button session, including after hold is latched. */
+    if (monitoring &&
+        (uint32_t)(now - last_sample_tick) >= PB_SAMPLE_MS) {
+        last_sample_tick = now;
 
-    if (!pressed && pb_is_down) {
-        pb_last_press_duration_ms = now - pb_down_tick;
-        pb_is_down = false;
+        const bool pressed =
+            (BSP_PB_GetState(BUTTON_USER) == GPIO_PIN_RESET);
 
-        if (pb_hold_latched) {
-            pb_hold_latched = false;
+        if (pressed != candidate_pressed) {
+            candidate_pressed = pressed;
+            candidate_tick = now;
         }
-        else if (pb_last_press_duration_ms < PB_HOLD_MS) {
-            if (current_state == BATTLE_MODE) {
-                if (laser_charge < LASER_CHARGE_MAX) {
-                    PB_CancelPendingSingle();
-                    pb_last_short_press_tick = 0;
-                    PB_OnSinglePress();
-                }
-                else {
-                    if (pb_last_short_press_tick != 0 &&
-                        (now - pb_last_short_press_tick) <= PB_DOUBLE_PRESS_MS)
-                    {
+
+        /* A transition is accepted only after the sampled level is stable. */
+        if (candidate_pressed != pb_is_down &&
+            (uint32_t)(now - candidate_tick) >= PB_DEBOUNCE_MS) {
+            if (candidate_pressed) {
+                pb_is_down = true;
+                pb_down_tick = now;
+                pb_hold_latched = false;
+                pb_low_charge_warned = false;
+                pb_last_fire_tick = 0U;
+
+                /* A second press qualifies when it BEGINS within the
+                 * pending double-press window, even if released later. */
+                second_press_eligible =
+                    pb_single_armed &&
+                    (int32_t)(candidate_tick - pb_single_deadline_tick) <= 0;
+            } else {
+                pb_last_press_duration_ms = now - pb_down_tick;
+                pb_is_down = false;
+                monitoring = false;
+
+                if (pb_hold_latched) {
+                    pb_hold_latched = false;
+                } else if (pb_last_press_duration_ms < PB_HOLD_MS) {
+                    if (current_state == BATTLE_MODE &&
+                        laser_charge < LASER_CHARGE_MAX) {
+                        /* Battle recharge: short press acts immediately. */
                         PB_CancelPendingSingle();
-                        pb_last_short_press_tick = 0;
+                        pb_last_short_press_tick = 0U;
+                        PB_OnSinglePress();
+                    } else if (second_press_eligible && pb_single_armed) {
+                        PB_CancelPendingSingle();
+                        pb_last_short_press_tick = 0U;
                         PB_OnDoublePress();
-                    }
-                    else {
+                    } else {
+                        /* Resolve an expired first click before arming
+                         * another; do not silently discard its action. */
+                        if (pb_single_armed) {
+                            PB_CancelPendingSingle();
+                            pb_last_short_press_tick = 0U;
+                            PB_OnSinglePress();
+                        }
                         pb_last_short_press_tick = now;
                         pb_single_armed = true;
                         pb_single_deadline_tick = now + PB_DOUBLE_PRESS_MS;
                     }
                 }
+                second_press_eligible = false;
             }
-            else {
-                if (pb_last_short_press_tick != 0 &&
-                    (now - pb_last_short_press_tick) <= PB_DOUBLE_PRESS_MS)
-                {
-                    PB_CancelPendingSingle();
-                    pb_last_short_press_tick = 0;
-                    PB_OnDoublePress();
-                }
-                else {
-                    pb_last_short_press_tick = now;
-                    pb_single_armed = true;
-                    pb_single_deadline_tick = now + PB_DOUBLE_PRESS_MS;
-                }
-            }
+        }
+
+        /* A bounced/spurious EXTI with no stable press may go dormant. */
+        if (!pb_is_down && !candidate_pressed &&
+            (uint32_t)(now - candidate_tick) >= PB_DEBOUNCE_MS) {
+            monitoring = false;
         }
     }
 
-    if (pb_single_armed && (int32_t)(now - pb_single_deadline_tick) >= 0) {
-        pb_single_armed = false;
-        pb_last_short_press_tick = 0;
+    /* Continuous hold classification is deadline-based, not ISR-based. */
+    if (pb_is_down && candidate_pressed && !pb_hold_latched &&
+        (uint32_t)(now - pb_down_tick) >= PB_HOLD_MS) {
+        pb_hold_latched = true;
+        PB_CancelPendingSingle();
+        pb_last_short_press_tick = 0U;
+        pb_last_fire_tick = now - PB_FIRE_PERIOD_MS;
+    }
+
+    /* Pending click times out even after active GPIO monitoring stops.
+     * Defer resolution while a possible second press is being validated. */
+    if (pb_single_armed && !pb_is_down && !candidate_pressed &&
+        (int32_t)(now - pb_single_deadline_tick) >= 0) {
+        PB_CancelPendingSingle();
+        pb_last_short_press_tick = 0U;
         PB_OnSinglePress();
     }
 }
