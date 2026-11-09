@@ -151,6 +151,16 @@ export function bindHud(state, world) {
 
   // Threat (fiction)
   setText('infected', String(world.infected));
+  if (world.lab) {
+    const hp = Math.max(0, Math.round(world.lab.hp));
+    $('labHp').firstChild.nodeValue = String(hp);
+    $('labFill').style.width = `${(hp / world.lab.max) * 100}%`;
+    $('labMeter').setAttribute('aria-valuenow', String(hp));
+    $('labMeter').dataset.low = hp < 600 ? '1' : '0';
+    $('labMeter').dataset.crit = hp < 250 ? '1' : '0';
+    $('youLost').hidden = hp > 0;
+    setText('labState', hp <= 0 ? 'DESTROYED' : world.lab.underAttack ? 'UNDER ATTACK' : 'INTACT');
+  }
   setText('kills', String(world.kills));
   setText('wave', String(world.wave));
   // RD-03D lock is firmware-reported (EVT RADAR); the lock is a GIANT. HP and

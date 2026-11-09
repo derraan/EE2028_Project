@@ -7,7 +7,7 @@
  */
 export function createRadar(canvas) {
   const ctx = canvas.getContext('2d');
-  const RANGE = 55;
+  const RANGE = 80;
   let sweep = 0;
   const memory = new Map(); // contact index → last-lit alpha
   let size = 0;
@@ -98,7 +98,7 @@ export function createRadar(canvas) {
 
       // RD-03D field of view (boresight = +z = up) and firmware lock
       const fov = (60 * Math.PI) / 180;
-      const rr = ((6 * 4) / RANGE) * r; // 6 m × RADAR_WORLD_PER_M
+      const rr = ((6 * 12) / RANGE) * r; // 6 m × RADAR_WORLD_PER_M
       ctx.strokeStyle = 'rgba(255,90,110,0.22)';
       ctx.setLineDash([w * 0.01, w * 0.015]);
       ctx.beginPath();

@@ -20,10 +20,15 @@ import { createEffects } from './effects.js';
 import { createDrone } from './drone.js';
 import { createHorde } from './zombies.js';
 import { createGiants } from './giants.js';
+import { createNuke } from './nuke.js';
 
 const FIELD_RADIUS = [22, 32];
 /** World units per real metre for radar ranges (RD-03D 6 m ≈ 24 units of field). */
-export const RADAR_WORLD_PER_M = 4;
+const LAB_MAX_HP = 1000;
+const ZOMBIE_DPS = 1.5;
+const GIANT_DPS = 25;
+const GIANT_STANDOFF = 30; // giants stop this far from the lab centre and smash it
+export const RADAR_WORLD_PER_M = 12; // 6 m radar range = 72 world units
 
 export function createWorld(host, { audio, adaptive = true } = {}) {
   const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
@@ -57,6 +62,7 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
   const drone = createDrone(scene);
   const horde = createHorde(scene);
   const giants = createGiants(scene);
+  const nuke = createNuke(scene, host, LAB_CENTER);
 
   // ------------------------------------------------------------ camera rig
   const rig = {
@@ -134,6 +140,8 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
     lastMode: 'STANDBY_MODE',
     ended: false,
     groanTimer: 4,
+    labHp: LAB_MAX_HP,
+    labHit: 0,
   };
 
   function fieldPoint(radius = FIELD_RADIUS) {
@@ -142,7 +150,16 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
     return new THREE.Vector3(Math.sin(a) * r, 0, Math.cos(a) * r + 2);
   }
 
-  function launchWave(size, where = fieldPoint()) {
+  /** Far away (70-130 units), along the radar's last detected azimuth (+/-25 deg); any bearing if the radar hasn't seen anything yet. */
+  function randomSpawnPoint() {
+    const a = radarTrack.lastAz == null
+      ? Math.random() * Math.PI * 2
+      : THREE.MathUtils.degToRad(radarTrack.lastAz + (Math.random() - 0.5) * 50);
+    const r = 70 + Math.random() * 60;
+    return new THREE.Vector3(drone.position.x + Math.sin(a) * r, 0, drone.position.z + Math.cos(a) * r);
+  }
+
+  function launchWave(size, where = randomSpawnPoint()) {
     game.wave += 1;
     game.sinceWave = 0;
     audio?.whoosh();
@@ -157,8 +174,11 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
   }
 
   // Radar lock binding (see update): the GIANT the firmware is tracking.
-  const radarTrack = { point: new THREE.Vector3(), locked: false, laser: false, az: null, rangeM: null, lostFor: 0, awaitRelock: false };
+  const radarTrack = { point: new THREE.Vector3(), locked: false, laser: false, az: null, rangeM: null, lostFor: 0, awaitRelock: false, lastAz: null };
   const torso = new THREE.Vector3();
+  const giantSpot = new THREE.Vector3();
+  const farSpawn = new THREE.Vector3();
+  const LIVE_GIANT_FAR = 1.0; // live board: the giant is drawn at 1.0x out than the raw radar range
   const chest = new THREE.Vector3();
 
   /** Point in front of the drone along a radar bearing (az deg, range m). */
@@ -198,6 +218,8 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
   }
 
   function reset() {
+    nuke.clear();
+    game.labLostFired = false;
     horde.clear();
     giants.clear();
     game.kills = 0;
@@ -206,14 +228,19 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
     game.wave = 0;
     game.sinceWave = 0;
     game.ended = false;
+    game.labHp = LAB_MAX_HP;
+    game.labHit = 0;
     drone.setVisible(true);
   }
 
   // ------------------------------------------------------------ stats
-  const stats = { kills: 0, giantKills: 0, giant: false, wave: 0, infected: 0, nearest: null, contacts: [], drone: { x: 0, z: 0, heading: 0 }, radar: null };
+  const stats = { kills: 0, giantKills: 0, giant: false, wave: 0, infected: 0, nearest: null, lab: { hp: LAB_MAX_HP, max: LAB_MAX_HP, underAttack: false }, contacts: [], drone: { x: 0, z: 0, heading: 0 }, radar: null };
 
   function computeStats() {
     stats.kills = game.kills;
+    stats.lab.hp = game.labHp;
+    stats.lab.underAttack = game.labHit > 0;
+    stats.lab.destroyed = game.labHp <= 0;
     stats.giantKills = game.giantKills;
     stats.giant = Boolean(giants.current);
     stats.wave = game.wave;
@@ -307,8 +334,7 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
       audio?.blip(140, 0.2, 'sawtooth', 0.2);
       const near = horde.contacts().filter((c) => Math.hypot(c.x - drone.position.x, c.z - drone.position.z) < 9).length;
       if (near < 4) {
-        const a = Math.random() * Math.PI * 2;
-        horde.spawn(new THREE.Vector3(drone.position.x + Math.cos(a) * 6, 0, drone.position.z + Math.sin(a) * 6), 2, { delay: 0.3 });
+        horde.spawn(randomSpawnPoint(), 2, { delay: 0.3 });
       }
     }
     if (ev.rescued) {
@@ -324,17 +350,21 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
       game.ended = true;
       const p = drone.position.clone().setY(1.2);
       fx.explosion(p, 1.5);
-      game.kills += horde.blast(p, 18);
+      game.kills += horde.blast(p, 1e6, (z) => fx.disintegrate(z.pos.clone().setY(1)));
+      giants.obliterate((gp, scale) => fx.explosion(gp, 2 + scale * 0.15));
       drone.setVisible(false);
-      rig.shake = 1.4;
-      audio?.boom(1.6);
+      nuke.start();
+      rig.shake = 2;
+      audio?.boom(2);
+      setTimeout(() => audio?.boom(2), 300);
+      setTimeout(() => audio?.boom(2), 900);
     }
     if (game.ended && !view.ended) reset(); // a new mission after termination
 
     // --- fiction director
     if (!view.ended) {
       if (battle && horde.count() < 2 && game.sinceWave > 9) launchWave(3 + Math.min(game.wave, 5));
-      if (mode === 'STANDBY_MODE' && horde.count() === 0 && game.sinceWave > 26) launchWave(2, fieldPoint([30, 38]));
+      if (mode === 'STANDBY_MODE' && horde.count() === 0 && game.sinceWave > 26) launchWave(2);
     }
     game.nextAmbient -= dt;
     if (game.nextAmbient <= 0) {
@@ -354,8 +384,15 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
     if (view.simRadar && battle && !down && !view.ended && !giants.current && game.sinceGiant > 18) {
       game.sinceGiant = 0;
       const az = (Math.random() - 0.5) * 70;
-      const g = giants.spawn(radarPoint(az, 5.6), { facing: Math.PI });
-      g.goal.copy(radarPoint(az * 0.6, 3.2)); // lumbers toward the drone, stays in range
+      radarTrack.lastAz = az;
+      const g = giants.spawn(radarPoint(az, 2.5 + Math.random() * 3.5), { facing: Math.PI });
+      // Marches on the lab and stops at a standoff distance to smash it.
+      const dirX = g.pos.x - LAB_CENTER.x;
+      const dirZ = g.pos.z - LAB_CENTER.z;
+      const dl = Math.hypot(dirX, dirZ) || 1;
+      g.goal.set(LAB_CENTER.x + (dirX / dl) * GIANT_STANDOFF, 0, LAB_CENTER.z + (dirZ / dl) * GIANT_STANDOFF);
+      g.g.rotation.y = Math.atan2(-dirX, -dirZ);
+      giants.faceTo(LAB_CENTER);
       audio?.boom(1.2);
       fx.ring(g.pos.clone(), { color: 0xff7040, radius: 12, life: 1.2 });
     }
@@ -367,13 +404,19 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
     radarTrack.laser = locked && Boolean(rv.laser);
     if (locked) {
       radarTrack.az = rv.az;
+      radarTrack.lastAz = rv.az;
       radarTrack.rangeM = rv.rangeMm / 1000;
       radarPoint(rv.az, radarTrack.rangeM, radarTrack.point);
       radarTrack.lostFor = 0;
       if (!view.simRadar && !radarTrack.awaitRelock) {
         // Live board: the person the real radar sees IS the giant.
-        if (!giants.current) giants.spawn(radarTrack.point, { facing: Math.atan2(drone.position.x - radarTrack.point.x, drone.position.z - radarTrack.point.z) });
-        giants.follow(radarTrack.point);
+        radarPoint(rv.az, radarTrack.rangeM * LIVE_GIANT_FAR, giantSpot);
+        if (!giants.current) {
+          radarPoint(rv.az, radarTrack.rangeM * LIVE_GIANT_FAR + 8, farSpawn);
+          giants.spawn(farSpawn, { facing: Math.atan2(drone.position.x - farSpawn.x, drone.position.z - farSpawn.z) });
+        }
+        giants.follow(giantSpot);
+        giants.faceTo(drone.position); // squares up to the drone along the radar bearing
       }
       if (ev.radarLocked) {
         audio?.blip(220, 0.25, 'sawtooth', 0.18);
@@ -382,10 +425,7 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
     } else {
       radarTrack.awaitRelock = false; // lock dropped: the next lock is a new giant
     }
-    if (!locked && !view.simRadar && giants.current) {
-      radarTrack.lostFor += dt;
-      if (radarTrack.lostFor > 1.5) giants.leave(); // lock gone: the giant lumbers off
-    }
+    // A giant never despawns on lock loss: it stays where it stood until the cannon downs it.
     const lockedGiant = locked ? giants.current : null;
 
     // --- actors
@@ -393,7 +433,7 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
     const priority = battle && !down ? horde.priorityTarget(drone.position) : null;
     if (lockedGiant) drone.track(giants.chest(lockedGiant, torso));
     else drone.track(priority ? horde.headPosition(priority).setY(1.2) : null);
-    drone.update(dt, t, mode, { down, ended: view.ended });
+    drone.update(dt, t, mode, { down, ended: view.ended, telemetry: view.telemetry });
     horde.update(dt, t, {
       onDeath: (p) => fx.disintegrate(p),
       onClaw: (z) => {
@@ -417,6 +457,16 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
       locked ? (lockedGiant ? giants.chest(lockedGiant, torso) : torso.copy(radarTrack.point).setY(1.35)) : null,
       { laser: radarTrack.laser && drone.root.visible, dt }
     );
+    // --- lab damage: clawing zombies and giants at the fence chip away at the lab
+    const labDps = horde.attackingLab() * ZOMBIE_DPS + giants.attackingLab(LAB_CENTER, GIANT_STANDOFF + 6) * GIANT_DPS;
+    game.labHit = labDps > 0 && game.labHp > 0 ? 0.3 : Math.max(0, game.labHit - dt);
+    if (labDps > 0 && !view.ended) {
+      game.labHp = Math.max(0, game.labHp - labDps * dt);
+      if (Math.random() < dt * 2) {
+        fx.sparks(new THREE.Vector3(LAB_CENTER.x + (Math.random() - 0.5) * 14, 3 + Math.random() * 5, LAB_CENTER.z + 8), 0xff8a3a);
+        rig.shake = Math.max(rig.shake, 0.15);
+      }
+    }
     env.setAlarm(down ? 1 : view.ended ? 0.4 : 0);
     env.update(dt, t);
     fx.update(dt);
@@ -428,8 +478,8 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
     if (rig.mode === 'drone' && drone.root.visible) {
       const h = drone.root.rotation.y;
       const back = new THREE.Vector3(-Math.sin(h), 0, -Math.cos(h));
-      camGoal.copy(drone.position).addScaledVector(back, 7.5).add(new THREE.Vector3(0, down ? 3.5 : 2.4, 0));
-      lookGoal.copy(drone.position).addScaledVector(back, -14).setY(down ? 0.5 : 1.2);
+      camGoal.copy(drone.position).addScaledVector(back, down ? 7.5 : 22).add(new THREE.Vector3(0, down ? 3.5 : 7, 0));
+      lookGoal.copy(drone.position).addScaledVector(back, -14).setY(down ? 0.5 : drone.position.y - 14);
     } else {
       if (!rig.dragging && rig.idle > 6) rig.yaw += dt * 0.025; // slow cinematic drift
       // Frame a giant (10–20× a zombie): ease the camera back, look up, and
@@ -437,10 +487,10 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
       // the other (the radar faces +z, where the default camera sits).
       rig.giantH += (giants.height - rig.giantH) * (1 - Math.exp(-dt * 1.5));
       const dist = rig.dist + rig.giantH * 0.9;
-      const focus = rig.focus.clone().lerp(drone.position, 0.15);
+      const focus = rig.focus.clone().lerp(drone.position, 0.55);
       const gNow = giants.current;
       if (gNow) {
-        focus.lerp(gNow.pos, 0.45);
+        if (Math.hypot(gNow.pos.x - drone.position.x, gNow.pos.z - drone.position.z) < 160) focus.lerp(gNow.pos, 0.45);
         if (!rig.dragging && rig.idle > 1.5) {
           const side = Math.atan2(gNow.pos.x - drone.position.x, gNow.pos.z - drone.position.z) + Math.PI / 2;
           const dy = Math.atan2(Math.sin(side - rig.yaw), Math.cos(side - rig.yaw));
@@ -468,7 +518,9 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
       camera.position.x += (Math.random() - 0.5) * s;
       camera.position.y += (Math.random() - 0.5) * s;
     }
-    bloom.strength = 0.85 + (down ? 0.25 : 0);
+    const nukeShake = nuke.update(dt);
+    if (nukeShake > 0) rig.shake = Math.max(rig.shake, nukeShake * 1.2);
+    bloom.strength = 0.85 + (down ? 0.25 : 0) + (nuke.active ? 0.6 : 0);
 
     composer.render(dt);
     adaptQuality(dt);
@@ -488,6 +540,9 @@ export function createWorld(host, { audio, adaptive = true } = {}) {
     },
     /** Optional manual spawn (virtual-board "meteor" control already trips T/A/G). */
     launchWave,
+    get labHp() {
+      return game.labHp;
+    },
     labCenter: LAB_CENTER,
     /** Drone position + live contacts in radar mm (x right, y = world +z), for the virtual RD-03D. */
     radarContacts() {

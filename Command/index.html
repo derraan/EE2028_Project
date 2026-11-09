@@ -45,13 +45,21 @@
       </dl>
     </section>
 
+    <section class="card lab-card">
+      <h2 class="card-title"><b>//</b> Lab integrity <span id="labState" class="tag">INTACT</span></h2>
+      <div class="charge-head"><strong id="labHp">1000<span>/1000</span></strong></div>
+      <div class="charge-meter lab-meter" id="labMeter" role="meter" aria-valuemin="0" aria-valuemax="1000" aria-valuenow="1000" aria-label="Lab health">
+        <i id="labFill"></i>
+      </div>
+    </section>
+
     <section class="card charge-card">
       <h2 class="card-title"><b>//</b> 02 Laser core</h2>
       <div class="charge-head"><strong id="charge">0<span>/50</span></strong><span id="armed" class="armed">STANDBY</span></div>
       <div class="charge-meter" id="chargeMeter" role="meter" aria-valuemin="0" aria-valuemax="50" aria-valuenow="0" aria-label="Laser charge">
         <i id="chargeFill"></i><b class="fire-line" aria-hidden="true"></b>
       </div>
-      <div class="meter-legend"><span>0</span><span>FIRE ≥ 5</span><span>10</span></div>
+      <div class="meter-legend"><span>0</span><span>FIRE ≥ 25</span><span>50</span></div>
     </section>
 
     <section class="card objective-card">
@@ -134,6 +142,8 @@
       <ol id="log" aria-live="off"></ol>
     </details>
   </footer>
+
+  <div class="you-lost" id="youLost" hidden role="alert">YOU LOST</div>
 
   <div class="emergency" id="emergency" hidden role="alert">
     <div class="emergency-panel">

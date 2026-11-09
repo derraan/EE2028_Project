@@ -13,9 +13,9 @@ const POOL = 2; // a dying giant can still be on screen when the next one rises
 const BASE_HEIGHT = 1.9; // zombie height in world units
 
 export function createGiants(scene) {
-  const skin = new THREE.MeshStandardMaterial({ color: 0x3b4636, roughness: 0.95, emissive: 0x1a2a12, emissiveIntensity: 0.6 });
-  const hide = new THREE.MeshStandardMaterial({ color: 0x2a2320, roughness: 1, emissive: 0x120806, emissiveIntensity: 0.4 });
-  const eye = new THREE.MeshBasicMaterial({ color: new THREE.Color(5, 0.6, 0.4) });
+  const skin = new THREE.MeshStandardMaterial({ fog: false, color: 0x3b4636, roughness: 0.95, emissive: 0x1a2a12, emissiveIntensity: 0.6 });
+  const hide = new THREE.MeshStandardMaterial({ fog: false, color: 0x2a2320, roughness: 1, emissive: 0x120806, emissiveIntensity: 0.4 });
+  const eye = new THREE.MeshBasicMaterial({ fog: false, color: new THREE.Color(5, 0.6, 0.4) });
   const spore = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.5, 1.6, 0.4) });
   const box = (w, h, d, ty = 0) => {
     const g = new THREE.BoxGeometry(w, h, d);
@@ -76,7 +76,7 @@ export function createGiants(scene) {
       g, hips, neck, arms, legs,
       alive: false, state: 'idle', t: 0, scale: 15,
       pos: new THREE.Vector3(), goal: new THREE.Vector3(), phase: Math.random() * 10,
-      hitFlash: 0, stagger: 0, hits: 0,
+      hitFlash: 0, stagger: 0, hits: 0, face: null, speed: 22,
     };
   }
 
@@ -108,6 +108,8 @@ export function createGiants(scene) {
       z.state = 'rise';
       z.t = 0;
       z.hits = 0;
+      z.face = null;
+      z.speed = 18 + Math.random() * 8; // varied per giant
       z.stagger = 0;
       z.hitFlash = 0;
       z.scale = scale;
@@ -126,6 +128,12 @@ export function createGiants(scene) {
     follow(point) {
       const z = this.current;
       if (z) z.goal.set(point.x, 0, point.z);
+    },
+
+    /** When standing still, turn to face this world point. */
+    faceTo(point) {
+      const z = this.current;
+      if (z) z.face = point.clone();
     },
 
     /** Chest point for the cannon beam / laser dot (azimuth-only aim → chest). */
@@ -163,6 +171,21 @@ export function createGiants(scene) {
       z.state = 'leave';
       z.t = 0;
       current = null;
+    },
+
+    /** Giants standing at their goal (the lab) — they smash it. */
+    attackingLab(lab, reach) {
+      let n = 0;
+      for (const z of pool) {
+        if (z.alive && z.state === 'walk' && Math.hypot(z.pos.x - lab.x, z.pos.z - lab.z) < reach) n++;
+      }
+      return n;
+    },
+
+    /** Visit every live giant (for a map-wide blast) then remove them all. */
+    obliterate(cb) {
+      for (const z of pool) if (z.alive) cb?.(z.pos.clone().setY(z.scale * BASE_HEIGHT * 0.5), z.scale);
+      this.clear();
     },
 
     clear() {
@@ -229,18 +252,23 @@ export function createGiants(scene) {
         const dx = z.goal.x - z.pos.x;
         const dz = z.goal.z - z.pos.z;
         const d = Math.hypot(dx, dz);
-        const speed = 1.4 * (1 - z.stagger * 0.9);
+        const speed = z.speed * (1 - z.stagger * 0.9);
         if (d > 0.3) {
           const k = Math.min(1, (speed * dt) / d);
           z.pos.x += dx * k;
           z.pos.z += dz * k;
-          z.phase += dt * 2.2;
+          z.phase += dt * 2.2 * (z.speed / 12);
           const face = Math.atan2(dx, dz);
           let dh = face - z.g.rotation.y;
           dh = Math.atan2(Math.sin(dh), Math.cos(dh));
           z.g.rotation.y += dh * Math.min(1, dt * 1.5);
         } else {
           z.phase += dt * 0.6;
+          if (z.face) {
+            let dh = Math.atan2(z.face.x - z.pos.x, z.face.z - z.pos.z) - z.g.rotation.y;
+            dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+            z.g.rotation.y += dh * Math.min(1, dt * 1.5);
+          }
         }
         const swing = Math.sin(z.phase);
         z.g.position.set(z.pos.x, Math.abs(swing) * 0.02 * H, z.pos.z);

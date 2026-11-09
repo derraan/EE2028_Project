@@ -57,12 +57,12 @@ extern void initialise_monitor_handles(void); /* semihosting printf */
 
 /* ===================== USER SETTINGS ===================== */
 #define MAG_CAL_MODE   0
-#define MAG_OFFSET_X   -190.5f
-#define MAG_OFFSET_Y   -1883.0f
-#define MAG_OFFSET_Z   -137.5f
-#define MAG_SCALE_X    0.789f
-#define MAG_SCALE_Y    0.787f
-#define MAG_SCALE_Z    2.165f
+#define MAG_OFFSET_X -175.5f
+#define MAG_OFFSET_Y -1846.0f
+#define MAG_OFFSET_Z -186.0f
+#define MAG_SCALE_X 0.813f
+#define MAG_SCALE_Y 0.851f
+#define MAG_SCALE_Z 1.681f
 #define MAG_MAP        0
 #define YAW_GYRO_SIGN  (-1.0f)
 #define YAW_DEBUG      0
@@ -192,16 +192,63 @@ static void Gyro_CalibrateBias(void)
 {
     float g[3];
     float sum[3] = { 0.0f, 0.0f, 0.0f };
-    for (int i = 0; i < 5; i++) {
+    int samples = 50;
+
+    for (int i = 0; i < samples; i++) {
         BSP_GYRO_GetXYZ(g);
         sum[0] += g[0] / 1000.0f;
         sum[1] += g[1] / 1000.0f;
         sum[2] += g[2] / 1000.0f;
     }
-    gyro_bias[0] = sum[0] / 5.0f;
-    gyro_bias[1] = sum[1] / 5.0f;
-    gyro_bias[2] = sum[2] / 5.0f;
+    gyro_bias[0] = sum[0] / (float)samples;
+    gyro_bias[1] = sum[1] / (float)samples;
+    gyro_bias[2] = sum[2] / (float)samples;
 }
+
+#if MAG_CAL_MODE
+static void Mag_Calibrate(void)
+{
+    int16_t raw[3];
+    float mn[3] = {  1e9f,  1e9f,  1e9f };
+    float mx[3] = { -1e9f, -1e9f, -1e9f };
+    uint32_t start = HAL_GetTick();
+    uint32_t last_print = start;
+
+    Telemetry_Printf("MAG CAL: rotate the board slowly through ALL orientations for 40 s...");
+    while ((HAL_GetTick() - start) < 40000U) {
+        BSP_MAGNETO_GetXYZ(raw);
+        for (int i = 0; i < 3; i++) {
+            float v = (float)raw[i];
+            if (v < mn[i]) mn[i] = v;
+            if (v > mx[i]) mx[i] = v;
+        }
+        if ((HAL_GetTick() - last_print) >= 1000U) {
+            last_print = HAL_GetTick();
+            Telemetry_Printf("t=%lus  X[%.0f..%.0f] Y[%.0f..%.0f] Z[%.0f..%.0f]",
+                             (unsigned long)((HAL_GetTick() - start) / 1000U),
+                             (double)mn[0], (double)mx[0], (double)mn[1], (double)mx[1],
+                             (double)mn[2], (double)mx[2]);
+        }
+        HAL_Delay(20);
+    }
+
+    float off[3], r[3];
+    for (int i = 0; i < 3; i++) {
+        off[i] = (mx[i] + mn[i]) / 2.0f;
+        r[i]   = (mx[i] - mn[i]) / 2.0f;
+    }
+    float avg_r = (r[0] + r[1] + r[2]) / 3.0f;
+
+    Telemetry_Printf("#define MAG_OFFSET_X %.1ff", (double)off[0]);
+    Telemetry_Printf("#define MAG_OFFSET_Y %.1ff", (double)off[1]);
+    Telemetry_Printf("#define MAG_OFFSET_Z %.1ff", (double)off[2]);
+    Telemetry_Printf("#define MAG_SCALE_X %.3ff", (double)(avg_r / r[0]));
+    Telemetry_Printf("#define MAG_SCALE_Y %.3ff", (double)(avg_r / r[1]));
+    Telemetry_Printf("#define MAG_SCALE_Z %.3ff", (double)(avg_r / r[2]));
+    Telemetry_Printf("Copy the values above, set MAG_CAL_MODE 0, rebuild.");
+    while (1) { }
+}
+#endif
 
 static const char *Heading_Cardinal(int yaw)
 {
@@ -340,9 +387,7 @@ static void Heading_Update(const float a[3], const float m[3], const float g[3],
 
 int main(void)
 {
-    /* Semihosting (CubeIDE console printf) only when a debugger is attached:
-     * without one the semihosting call faults, so the board could not run from
-     * plain USB power. Mission telemetry does not need it (UART below). */
+    /* Semihosting (CubeIDE console printf) only when a debugger is attached */
     if ((CoreDebug->DHCSR & CoreDebug_DHCSR_C_DEBUGEN_Msk) != 0U) {
         initialise_monitor_handles();
     }
@@ -352,16 +397,12 @@ int main(void)
 
     /* Mission telemetry → ST-LINK Virtual COM (USART1 115200 8N1) for Tera Term / VESPER. */
     Telemetry_UartInit();
-    /* Same telemetry over Wi-Fi (ISM43362 TCP server) when App/Inc/wifi_config.h
-     * exists. Starts the join in the background; Telemetry_WifiPoll() drives it. */
     Telemetry_WifiInit(HAL_GetTick());
 
-    /* Peripheral and Board Initializations using BSP functions */
+    /* Peripheral and Board Initializations */
     BSP_LED_Init(LED2);
-    /* Prefer BOTH edges so rising (release) and falling (press) each generate EXTI.
-     * If the BSP only enables one edge, Process_PushButton() still tracks level via GPIO. */
-    BSP_PB_Init(BUTTON_USER, BUTTON_MODE_EXTI);
 
+    /* 1. Initialize all sensors FIRST, while interrupts are quiet */
     BSP_ACCELERO_Init();
     BSP_TSENSOR_Init();
     BSP_GYRO_Init();
@@ -374,14 +415,10 @@ int main(void)
         Enhancements_Config_t ee_cfg;
         (void)Enhancements_HW_Setup(&ee_cfg, EE_MATRIX_I2C);
 #if defined(EE_RADAR_AIM) && (EE_RADAR_AIM != 0)
-        /* RD-03D on UART4 (D0/D1), pan servo on TIM3_CH1 (D5), laser on D7.
-         * Detection + aiming only: modes, charge and hold-to-fire stay here. */
         if (Enhancements_HW_SetupRadarAim(&ee_cfg) != 0) {
             Telemetry_Printf("Radar/laser aim hardware init incomplete - continuing without it.");
         }
 #if EE_SERVO_SELFTEST
-        /* Bench check: arms a non-blocking servo sweep on D5 (laser stays OFF);
-         * it is stepped from Enhancements_Tick(). */
         Enhancements_HW_ServoSelfTest();
 #endif
 #endif
@@ -394,9 +431,17 @@ int main(void)
     Telemetry_EvtMode(EVT_MODE_STANDBY);
     Telemetry_EvtCharge((uint8_t)laser_charge);
 
-    Gyro_CalibrateBias();
+#if MAG_CAL_MODE
+    Mag_Calibrate();          /* never returns */
+#endif
+    Gyro_CalibrateBias();     /* keep the board still for ~1 s */
+
+    /* 2. Initialize the Push Button EXTI LAST, right before the main loop starts */
+    BSP_PB_Init(BUTTON_USER, BUTTON_MODE_EXTI);
 
     uint32_t last_tick = HAL_GetTick();
+    uint32_t boot_stabilize_tick = HAL_GetTick();
+    bool sensors_ready = false;
 
     while (1)
     {
@@ -415,20 +460,48 @@ int main(void)
 
         laser_charge = Laser_Clamp(laser_charge);
 
-        /* --- 1. Read All Sensors --- */
+        /* --- 1. Read All Sensors with Boot Zero-Check --- */
         float accel_data[3];
         int16_t accel_data_i16[3] = { 0 };
         BSP_ACCELERO_AccGetXYZ(accel_data_i16);
+
+        // If sensors are still booting up and returning 0, retry on the next loop pass
+        if (accel_data_i16[0] == 0 && accel_data_i16[1] == 0 && accel_data_i16[2] == 0) {
+            Process_PushButton();
+            continue;
+        }
+
         accel_data[0] = (float)accel_data_i16[0] * (9.81f / 1000.0f);
         accel_data[1] = (float)accel_data_i16[1] * (9.81f / 1000.0f);
         accel_data[2] = (float)accel_data_i16[2] * (9.81f / 1000.0f);
         current_accel_z = accel_data[2];
 
+        /* Prevent zero-reading lockup at boot by giving sensors ~100ms to stabilize */
+        if (!sensors_ready) {
+            if ((current_tick - boot_stabilize_tick) < 100U) {
+                // If readings are still zero during the stabilization window, skip this pass safely
+                if (accel_data[0] == 0.0f && accel_data[1] == 0.0f && accel_data[2] == 0.0f) {
+                    Process_PushButton();
+                    continue;
+                }
+            }
+            sensors_ready = true;
+        }
+
         float gyro_data[3];
         BSP_GYRO_GetXYZ(gyro_data);
-        gyro_data[0] = gyro_data[0] / 1000.0f;
-        gyro_data[1] = gyro_data[1] / 1000.0f;
-        gyro_data[2] = gyro_data[2] / 1000.0f;
+
+        /* Convert mdps to dps and subtract boot calibration bias */
+        gyro_data[0] = (gyro_data[0] / 1000.0f) - gyro_bias[0];
+        gyro_data[1] = (gyro_data[1] / 1000.0f) - gyro_bias[1];
+        gyro_data[2] = (gyro_data[2] / 1000.0f) - gyro_bias[2];
+
+        /* Apply a software deadband to eliminate stationary noise / drift */
+        for (int i = 0; i < 3; i++) {
+            if (fabsf(gyro_data[i]) < 2.0f) {
+                gyro_data[i] = 0.0f; /* Treat jitter below 2 dps as perfectly still */
+            }
+        }
 
         float magneto_data[3];
         int16_t magneto_data_i16[3] = { 0 };
@@ -464,8 +537,8 @@ int main(void)
 
                 {
                     bool tag_exceeded = (temp_data > THRESHOLD_T) ||
-                        (accel_data[0] > THRESHOLD_A || accel_data[1] > THRESHOLD_A || accel_data[2] > THRESHOLD_A) ||
-                        (gyro_data[0] > THRESHOLD_G || gyro_data[1] > THRESHOLD_G || gyro_data[2] > THRESHOLD_G);
+                        (fabsf(accel_data[0]) > THRESHOLD_A || fabsf(accel_data[1]) > THRESHOLD_A || fabsf(accel_data[2]) > THRESHOLD_A) ||
+                        (fabsf(gyro_data[0]) > THRESHOLD_G || fabsf(gyro_data[1]) > THRESHOLD_G || fabsf(gyro_data[2]) > THRESHOLD_G);
 
                     bool any_exceeded = tag_exceeded ||
                         (press_data < THRESHOLD_P) ||
@@ -492,9 +565,8 @@ int main(void)
                             tick_1s_telemetry = HAL_GetTick();
                             Telemetry_SendSensors(temp_data, press_data, humid_data,
                                 accel_data, gyro_data, magneto_data);
-                            Telemetry_Printf("Heading -> Magneto Mag:%.2f mgauss | Roll:%.2f deg, Pitch:%.2f deg, Yaw:%d deg (%s)",
-                                             (double)mag_mag, (double)g_roll_deg, (double)g_pitch_deg,
-                                             g_yaw_deg, Heading_Cardinal(g_yaw_deg));
+                            Telemetry_Printf("Roll:%.2f deg, Pitch:%.2f deg, Yaw:%d deg (%s)",
+                                             (double)g_roll_deg, (double)g_pitch_deg, g_yaw_deg, Heading_Cardinal(g_yaw_deg));
                         }
                     }
                 }
@@ -645,20 +717,9 @@ static void Telemetry_SendSnapshot(void)
 /* --- EXTI: stamp rising/falling edges (GPIO level classified in Process_PushButton) --- */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-    if (GPIO_Pin == GPIO_PIN_1) {
-        Telemetry_WifiDrdyIsr(); /* ISM43362 DATA-READY (PE1 / EXTI1) */
-        return;
-    }
-    if (GPIO_Pin != USER_BUTTON_PIN) {
-        return;
-    }
-
+    if (GPIO_Pin != USER_BUTTON_PIN) return;
     uint32_t now = HAL_GetTick();
-    pb_raw_edge = true;
-    pb_raw_edge_tick = now;
-    if ((now - pb_last_edge_tick) < PB_DEBOUNCE_MS) {
-        return;
-    }
+    if ((now - pb_last_edge_tick) < PB_DEBOUNCE_MS) return;
     pb_last_edge_tick = now;
     pb_edge_tick = now;
     pb_edge_pending = true;
@@ -675,82 +736,76 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
  */
 void Process_PushButton(void)
 {
-    bool edge = false;
-    uint32_t edge_tick = 0U;
-
-    /* Take the edge before reading the clock, so edge_tick <= now always. */
-    if (pb_edge_pending) {
-        pb_edge_pending = false;
-        edge_tick = pb_edge_tick;
-        edge = true;
-    }
-
     const bool pressed = (BSP_PB_GetState(BUTTON_USER) == GPIO_PIN_RESET);
     const uint32_t now = HAL_GetTick();
 
-    /* Press start: GPIO low after an EXTI edge — either an accepted one, or a
-     * debounce-rejected one once the line has been quiet for PB_DEBOUNCE_MS. */
-    /* Signed: the ISR may stamp an edge after `now` was read. */
-    const bool settled = ((int32_t)(now - pb_last_edge_tick) >= (int32_t)PB_DEBOUNCE_MS);
-    if (pressed && !pb_is_down && (edge || (pb_raw_edge && settled))) {
+    if (pb_edge_pending) {
+        pb_edge_pending = false;
+    }
+
+    if (pressed && !pb_is_down) {
         pb_is_down = true;
-        const uint32_t raw_tick = pb_raw_edge_tick;
-        pb_down_tick = edge ? edge_tick
-                     : ((int32_t)(now - raw_tick) >= 0 ? raw_tick : now);
-        pb_raw_edge = false;
+        pb_down_tick = now;
         pb_hold_latched = false;
         pb_low_charge_warned = false;
         pb_last_fire_tick = 0;
     }
 
-    /* Hold crossed while still down (GPIO still pressed) */
     if (pb_is_down && pressed && !pb_hold_latched &&
         (now - pb_down_tick) >= PB_HOLD_MS)
     {
         pb_hold_latched = true;
         PB_CancelPendingSingle();
         pb_last_short_press_tick = 0;
-        /* Fire immediately on hold latch, then every PB_FIRE_PERIOD_MS */
         pb_last_fire_tick = now - PB_FIRE_PERIOD_MS;
-        /* Battle fire runs in state machine; other modes ignore hold */
     }
 
-    /* Release: GPIO high while down. Prefer the EXTI timestamp. The level-only
-     * fallback (single-edge BSP, or a debounce-rejected release edge) waits for
-     * the line to settle so contact bounce cannot fake a release mid-press. */
-    if (pb_is_down && !pressed && (edge || settled)) {
-        const uint32_t release_tick = edge ? edge_tick : now;
-        pb_last_press_duration_ms = release_tick - pb_down_tick;
+    if (!pressed && pb_is_down) {
+        pb_last_press_duration_ms = now - pb_down_tick;
         pb_is_down = false;
-        pb_raw_edge = false;
 
         if (pb_hold_latched) {
-            /* Hold/release pair: do not treat as a click for double-press */
             pb_hold_latched = false;
         }
         else if (pb_last_press_duration_ms < PB_HOLD_MS) {
-            if (current_state == BATTLE_MODE && laser_charge < LASER_CHARGE_MAX) {
-                /* Charging: act on every short press right away */
-                PB_CancelPendingSingle();
-                pb_last_short_press_tick = 0;
-                PB_OnSinglePress();
-            }
-            else if (pb_last_short_press_tick != 0 &&
-                     (now - pb_last_short_press_tick) <= PB_DOUBLE_PRESS_MS)
-            {
-                PB_CancelPendingSingle();
-                pb_last_short_press_tick = 0;
-                PB_OnDoublePress();
+            if (current_state == BATTLE_MODE) {
+                if (laser_charge < LASER_CHARGE_MAX) {
+                    PB_CancelPendingSingle();
+                    pb_last_short_press_tick = 0;
+                    PB_OnSinglePress();
+                }
+                else {
+                    if (pb_last_short_press_tick != 0 &&
+                        (now - pb_last_short_press_tick) <= PB_DOUBLE_PRESS_MS)
+                    {
+                        PB_CancelPendingSingle();
+                        pb_last_short_press_tick = 0;
+                        PB_OnDoublePress();
+                    }
+                    else {
+                        pb_last_short_press_tick = now;
+                        pb_single_armed = true;
+                        pb_single_deadline_tick = now + PB_DOUBLE_PRESS_MS;
+                    }
+                }
             }
             else {
-                pb_last_short_press_tick = now;
-                pb_single_armed = true;
-                pb_single_deadline_tick = now + PB_DOUBLE_PRESS_MS;
+                if (pb_last_short_press_tick != 0 &&
+                    (now - pb_last_short_press_tick) <= PB_DOUBLE_PRESS_MS)
+                {
+                    PB_CancelPendingSingle();
+                    pb_last_short_press_tick = 0;
+                    PB_OnDoublePress();
+                }
+                else {
+                    pb_last_short_press_tick = now;
+                    pb_single_armed = true;
+                    pb_single_deadline_tick = now + PB_DOUBLE_PRESS_MS;
+                }
             }
         }
     }
 
-    /* Deferred single press: no second short press within double-press window */
     if (pb_single_armed && (int32_t)(now - pb_single_deadline_tick) >= 0) {
         pb_single_armed = false;
         pb_last_short_press_tick = 0;
@@ -946,23 +1001,23 @@ void Check_And_Log_Thresholds(float t, float p, float h, float a[3], float g[3],
         Telemetry_Printf("H:%.2f %% is lower than the threshold of %.2f %%.", (double)h, (double)THRESHOLD_H);
         Telemetry_Printf("Too dry for inhabitation!");
     }
-    if (a[0] > THRESHOLD_A) {
-        Telemetry_Printf("Accel X has exceeded the threshold of %.2f m/s^2.", (double)THRESHOLD_A);
+    if (fabsf(a[0]) > THRESHOLD_A) {
+        Telemetry_Printf("|Acceleration X| has exceeded the threshold of %.2f m/s^2.", (double)THRESHOLD_A);
     }
-    if (a[1] > THRESHOLD_A) {
-        Telemetry_Printf("Accel Y has exceeded the threshold of %.2f m/s^2.", (double)THRESHOLD_A);
+    if (fabsf(a[1]) > THRESHOLD_A) {
+        Telemetry_Printf("|Acceleration Y| has exceeded the threshold of %.2f m/s^2.", (double)THRESHOLD_A);
     }
-    if (a[2] > THRESHOLD_A) {
-        Telemetry_Printf("Accel Z has exceeded the threshold of %.2f m/s^2.", (double)THRESHOLD_A);
+    if (fabsf(a[2]) > THRESHOLD_A) {
+        Telemetry_Printf("|Acceleration Z| has exceeded the threshold of %.2f m/s^2.", (double)THRESHOLD_A);
     }
-    if (g[0] > THRESHOLD_G) {
-        Telemetry_Printf("Angular velocity X has exceeded the threshold of %.2f dps.", (double)THRESHOLD_G);
+    if (fabsf(g[0]) > THRESHOLD_G) {
+        Telemetry_Printf("|Angular velocity X| has exceeded the threshold of %.2f dps.", (double)THRESHOLD_G);
     }
-    if (g[1] > THRESHOLD_G) {
-        Telemetry_Printf("Angular velocity Y has exceeded the threshold of %.2f dps.", (double)THRESHOLD_G);
+    if (fabsf(g[1]) > THRESHOLD_G) {
+        Telemetry_Printf("|Angular velocity Y| has exceeded the threshold of %.2f dps.", (double)THRESHOLD_G);
     }
-    if (g[2] > THRESHOLD_G) {
-        Telemetry_Printf("Angular velocity Z has exceeded the threshold of %.2f dps.", (double)THRESHOLD_G);
+    if (fabsf(g[2]) > THRESHOLD_G) {
+        Telemetry_Printf("|Angular velocity Z| has exceeded the threshold of %.2f dps.", (double)THRESHOLD_G);
     }
 
     float mag_mag = sqrtf(m[0] * m[0] + m[1] * m[1] + m[2] * m[2]);
