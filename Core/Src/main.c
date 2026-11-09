@@ -522,7 +522,17 @@ int main(void)
 
         float temp_data = BSP_TSENSOR_ReadTemp();
         float press_data = BSP_PSENSOR_ReadPressure();
-        float humid_data = BSP_HSENSOR_ReadHumidity();
+        float humid_data = BSP_HSENSOR_ReadHumidity();  
+        
+        /* ========================================================
+         * MANUAL SENSOR OVERRIDES FOR DEMO / TESTING
+         * Uncomment the desired line(s) below to force a violation:
+         * ======================================================== */
+        // temp_data   = 55.0f;   // Triggers Temp warning (> 50.0f)
+        // humid_data  = 15.0f;   // Triggers Dryness warning (< 30.0f)  <-- NOTE: MUST BE LOWER!
+        // press_data  = 850.0f;  // Triggers Stall alert (< 900.0f)     <-- NOTE: MUST BE LOWER!
+        // gyro_data[2] = 1200.0f; // Triggers Gyro Z warning (> 1000.0f)
+        // accel_data[0] = 25.0f; // Triggers Accel X warning (> 20.0f)
 
         const float mag_mag = sqrtf(magneto_data[0] * magneto_data[0] +
                                     magneto_data[1] * magneto_data[1] +
