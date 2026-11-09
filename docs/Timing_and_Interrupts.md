@@ -109,6 +109,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     }
     if (GPIO_Pin != USER_BUTTON_PIN) return;
     uint32_t now = HAL_GetTick();
+    pb_raw_edge = true;                /* every edge, even debounce-rejected */
+    pb_raw_edge_tick = now;
     if ((now - pb_last_edge_tick) < PB_DEBOUNCE_MS) return;   /* 100 ms */
     pb_last_edge_tick = now;
     pb_edge_tick = now;
@@ -117,7 +119,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 ```
 
 - Runs in a few instructions: no printing, no mode change, no I2C or UART.
-- It stamps a debounced edge. `Process_PushButton()` **must consume** that stamp: a new press starts only when `pb_edge_pending` was set and GPIO is low. Hold keeps sampling level while already down. Release prefers the EXTI timestamp and can fall back to GPIO level if Cube enabled only one edge.
+- It stamps a debounced edge. `Process_PushButton()` **must consume** that stamp: a new press starts only when `pb_edge_pending` was set and GPIO is low. The one exception is a re-press inside 100 ms of the last accepted edge: debounce rejects it, but `pb_raw_edge` still records it, and the press starts once the line has been quiet for 100 ms. Hold keeps sampling level while already down. Release prefers the EXTI timestamp. It can fall back to GPIO level, but only after the same 100 ms quiet period, so bounce cannot fake a release.
 - The shared variables `pb_last_edge_tick`, `pb_edge_pending` and `pb_edge_tick` are `volatile`. Clearing the flag without using it (pure GPIO polling) is not allowed.
 - Interrupt requests handled: one per accepted edge, so 2 per click (press + release), at most one per 100 ms because of the debounce.
 

@@ -3,19 +3,10 @@
 
 #include "stm32l4xx_hal.h"
 
-/* Placeholder pin / threshold defines — replace with CubeMX / board values */
+/* Placeholder pin define — replace with CubeMX / board value.
+ * Sensor thresholds (THRESHOLD_*) are canonical in Core/Src/main.c only. */
 #ifndef PB_Pin
 #define PB_Pin GPIO_PIN_13
-#endif
-
-#ifndef THRESHOLD_T
-#define THRESHOLD_T 40.0f
-#endif
-#ifndef THRESHOLD_A
-#define THRESHOLD_A 2.0f
-#endif
-#ifndef THRESHOLD_G
-#define THRESHOLD_G 1.5f
 #endif
 
 /*

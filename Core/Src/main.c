@@ -117,6 +117,10 @@ DroneState_t current_state = STANDBY_MODE;
 volatile uint32_t pb_last_edge_tick = 0;
 volatile bool pb_edge_pending = false;
 volatile uint32_t pb_edge_tick = 0;
+/* Any edge, including ones the 100 ms debounce rejected: a re-press soon after
+ * an accepted release still needs a way to start once the line has settled. */
+volatile bool pb_raw_edge = false;
+volatile uint32_t pb_raw_edge_tick = 0;
 
 bool pb_is_down = false;
 uint32_t pb_down_tick = 0;
@@ -231,33 +235,59 @@ static void Heading_Update(const float a[3], const float m[3], const float g[3],
 {
     static float af[3];
     static float mf[3];
-    static bool  filt_init  = false;
+    static bool  accel_filt_init = false;
+    static bool  mag_filt_init   = false;
     static uint32_t start_tick = 0;
 
+    /* Accel LPF + roll/pitch never wait on the magnetometer. The old path
+     * returned before filt_init when |m| < 50, so g_roll/g_pitch/g_yaw stayed
+     * at 0 forever whenever mag was weak or uncalibrated at boot. */
+    if (!accel_filt_init) {
+        af[0] = a[0];
+        af[1] = a[1];
+        af[2] = a[2];
+        accel_filt_init = true;
+    } else {
+        const float lk = dt / (HEADING_LPF_TAU_S + dt);
+        af[0] += lk * (a[0] - af[0]);
+        af[1] += lk * (a[1] - af[1]);
+        af[2] += lk * (a[2] - af[2]);
+    }
+
+    float ax = af[0], ay = af[1], az = af[2];
+    const float n = sqrtf(ax * ax + ay * ay + az * az);
+    if (n >= 0.0001f) {
+        ax /= n;
+        ay /= n;
+        az /= n;
+        g_roll_deg  = atan2f(ay, az) * (180.0f / 3.14159265f);
+        g_pitch_deg = atan2f(-ax, sqrtf(ay * ay + az * az)) * (180.0f / 3.14159265f);
+    }
+
     const float m_norm = sqrtf(m[0] * m[0] + m[1] * m[1] + m[2] * m[2]);
-    if (!filt_init) {
-        if (m_norm < 50.0f) return;
-        for (int i = 0; i < 3; i++) {
-            af[i] = a[i];
-            mf[i] = m[i];
-        }
-        filt_init = true;
+    if (m_norm < 50.0f) {
+        return; /* yaw needs a usable mag sample; roll/pitch already updated */
+    }
+
+    if (!mag_filt_init) {
+        mf[0] = m[0];
+        mf[1] = m[1];
+        mf[2] = m[2];
+        mag_filt_init = true;
         start_tick = HAL_GetTick();
     } else {
         const float lk = dt / (HEADING_LPF_TAU_S + dt);
-        for (int i = 0; i < 3; i++) {
-            af[i] += lk * (a[i] - af[i]);
-            mf[i] += lk * (m[i] - mf[i]);
-        }
+        mf[0] += lk * (m[0] - mf[0]);
+        mf[1] += lk * (m[1] - mf[1]);
+        mf[2] += lk * (m[2] - mf[2]);
+    }
+
+    if (n < 0.0001f) {
+        return;
     }
 
     float mx, my, mz;
     Mag_ToBodyFrame(mf, &mx, &my, &mz);
-
-    float ax = af[0], ay = af[1], az = af[2];
-    const float n = sqrtf(ax * ax + ay * ay + az * az);
-    if (n < 0.0001f) return;
-    ax /= n; ay /= n; az /= n;
 
     const float dot     = mx * ax + my * ay + mz * az;
     const float north_x = mx - dot * ax;
@@ -303,8 +333,6 @@ static void Heading_Update(const float a[3], const float m[3], const float g[3],
         gyro_bias[2] += bk * (g[2] - gyro_bias[2]);
     }
 
-    g_roll_deg  = atan2f(ay, az) * (180.0f / 3.14159265f);
-    g_pitch_deg = atan2f(-ax, sqrtf(ay * ay + az * az)) * (180.0f / 3.14159265f);
     int yi = (int)roundf(filtered_yaw_deg);
     if (yi >= 360) yi -= 360;
     g_yaw_deg = yi;
@@ -626,6 +654,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     }
 
     uint32_t now = HAL_GetTick();
+    pb_raw_edge = true;
+    pb_raw_edge_tick = now;
     if ((now - pb_last_edge_tick) < PB_DEBOUNCE_MS) {
         return;
     }
@@ -645,21 +675,29 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
  */
 void Process_PushButton(void)
 {
-    const bool pressed = (BSP_PB_GetState(BUTTON_USER) == GPIO_PIN_RESET);
-    const uint32_t now = HAL_GetTick();
     bool edge = false;
-    uint32_t edge_tick = now;
+    uint32_t edge_tick = 0U;
 
+    /* Take the edge before reading the clock, so edge_tick <= now always. */
     if (pb_edge_pending) {
         pb_edge_pending = false;
         edge_tick = pb_edge_tick;
         edge = true;
     }
 
-    /* Press start: EXTI-confirmed edge while GPIO is low (active-low). */
-    if (edge && pressed && !pb_is_down) {
+    const bool pressed = (BSP_PB_GetState(BUTTON_USER) == GPIO_PIN_RESET);
+    const uint32_t now = HAL_GetTick();
+
+    /* Press start: GPIO low after an EXTI edge — either an accepted one, or a
+     * debounce-rejected one once the line has been quiet for PB_DEBOUNCE_MS. */
+    /* Signed: the ISR may stamp an edge after `now` was read. */
+    const bool settled = ((int32_t)(now - pb_last_edge_tick) >= (int32_t)PB_DEBOUNCE_MS);
+    if (pressed && !pb_is_down && (edge || (pb_raw_edge && settled))) {
         pb_is_down = true;
-        pb_down_tick = edge_tick;
+        const uint32_t raw_tick = pb_raw_edge_tick;
+        pb_down_tick = edge ? edge_tick
+                     : ((int32_t)(now - raw_tick) >= 0 ? raw_tick : now);
+        pb_raw_edge = false;
         pb_hold_latched = false;
         pb_low_charge_warned = false;
         pb_last_fire_tick = 0;
@@ -677,12 +715,14 @@ void Process_PushButton(void)
         /* Battle fire runs in state machine; other modes ignore hold */
     }
 
-    /* Release: GPIO high while down. Prefer EXTI timestamp; level recovers
-     * release if Cube only enabled the falling (press) edge. */
-    if (pb_is_down && !pressed) {
+    /* Release: GPIO high while down. Prefer the EXTI timestamp. The level-only
+     * fallback (single-edge BSP, or a debounce-rejected release edge) waits for
+     * the line to settle so contact bounce cannot fake a release mid-press. */
+    if (pb_is_down && !pressed && (edge || settled)) {
         const uint32_t release_tick = edge ? edge_tick : now;
         pb_last_press_duration_ms = release_tick - pb_down_tick;
         pb_is_down = false;
+        pb_raw_edge = false;
 
         if (pb_hold_latched) {
             /* Hold/release pair: do not treat as a click for double-press */
