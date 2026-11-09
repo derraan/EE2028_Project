@@ -432,8 +432,22 @@ int main(void)
 #endif
     Gyro_CalibrateBias();     /* keep the board still for ~1 s */
 
-    /* 2. Initialize the Push Button EXTI LAST, right before the main loop starts */
+    /* 2. Initialize the Push Button EXTI LAST, right before the main loop starts.
+     * The ST B-L4S5I-IOT01A BSP selects GPIO_MODE_IT_RISING by default.
+     * USER is active-low: rising is RELEASE, while our EXTI-woken monitor
+     * needs the falling PRESS edge to begin sampling. Keep the BSP NVIC
+     * setup, but override the PC13 GPIO trigger to falling-edge EXTI.
+     * Release is handled by non-blocking GPIO sampling while monitoring.
+     */
     BSP_PB_Init(BUTTON_USER, BUTTON_MODE_EXTI);
+    {
+        GPIO_InitTypeDef button_gpio = {0};
+        button_gpio.Pin = USER_BUTTON_PIN;
+        button_gpio.Mode = GPIO_MODE_IT_FALLING;
+        button_gpio.Pull = GPIO_PULLUP;
+        button_gpio.Speed = GPIO_SPEED_FREQ_LOW;
+        HAL_GPIO_Init(USER_BUTTON_GPIO_PORT, &button_gpio);
+    }
 
     uint32_t last_tick = HAL_GetTick();
     uint32_t boot_stabilize_tick = HAL_GetTick();
@@ -712,8 +726,8 @@ static void Telemetry_SendSnapshot(void)
 
 /*
  * Button EXTI: notify the main loop and return immediately. The callback
- * may be invoked for either edge; only a falling edge is required to wake
- * the monitor for an active-low USER button.
+ * is configured for falling-edge press detection on active-low USER.
+ * Release is subsequently detected by scheduled GPIO sampling.
  */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
